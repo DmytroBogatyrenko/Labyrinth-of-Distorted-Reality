@@ -4,9 +4,12 @@
 
 ## Що реалізовано
 
-- Карта 16x16 (`#`, `.`, `1`, `2`, `3`, `D`, `e/E`).
+- Карта 32x32 (`#`, `.`, `1`, `2`, `3`, `D`, `e/E`) — трохи менша, коридорного типу, і блоки не повторюються однаково щоразу.
 - Рендер «від 1 лиця» через raycasting у вікні SFML.
-- 3 ключі, які на мінікарті спочатку невидимі (видимі лише коли підійшов поруч).
+- Кругле міні-віконце карти (близька зона навколо гравця) зі стрілкою напрямку.
+- Повна карта відкривається/закривається клавішею `M` і теж має стрілку напрямку гравця.
+- 3 ключі при кожному запуску ставляться у випадкові місця.
+- На мінікарті ключ показується жовтим, якщо гравець уже близько до нього; на повній карті ключі приховані.
 - Збір ключа: тайл `1/2/3` перетворюється на `.` і `score++`.
 - Двері `D` блокують рух, поки не зібрано всі 3 ключі.
 - Після 3 ключів: `D -> .` і `e -> E`.
@@ -20,12 +23,13 @@
 
 - `W/S` або `↑/↓` — вперед/назад
 - `A/D` або `←/→` — поворот камери
+- `M` — показати/сховати повну карту
 - `ESC` — вихід
 
 ## Збірка (Windows MinGW64 + SFML 3.0.2)
 
 ```bash
-g++ -std=c++20 -O2 -Wall -Wextra -pedantic main.cpp -o labyrinth.exe \
+g++ -std=c++20 -O2 -Wall -Wextra -pedantic main.cpp LabyrinthGame.cpp -o labyrinth.exe \
   -IC:/SFML-3.0.2/include \
   -LC:/SFML-3.0.2/lib \
   -lsfml-graphics -lsfml-window -lsfml-system
@@ -72,3 +76,80 @@ g++ -std=c++20 -O2 -Wall -Wextra -pedantic main.cpp -o labyrinth.exe \
 ## Пружиниста хода (bobbing)
 
 Реалізовано легкий bobbing-ефект: під час руху змінюється `cameraBobOffset = sin(phase) * amplitude`, і лінія горизонту (`horizonY`) трохи коливається. Коли гравець стоїть — є окреме дуже легке коливання камери (ніби легке запаморочення).
+
+
+## Як додати звук (кроки та підбирання ключа)
+
+У SFML це робиться через `sf::SoundBuffer` + `sf::Sound`.
+
+### 1) Додай include
+
+```cpp
+#include <SFML/Audio.hpp>
+```
+
+### 2) Додай поля в клас
+
+```cpp
+sf::SoundBuffer stepsBuffer;
+sf::SoundBuffer keyBuffer;
+sf::Sound stepsSound;
+sf::Sound keySound;
+```
+
+### 3) Завантаження у конструкторі
+
+```cpp
+stepsBuffer.loadFromFile("assets/sfx/steps.wav");
+keyBuffer.loadFromFile("assets/sfx/key_pickup.wav");
+stepsSound.setBuffer(stepsBuffer);
+keySound.setBuffer(keyBuffer);
+stepsSound.setLoop(true);
+```
+
+### 4) Відтворення кроків
+
+У `update()`:
+- якщо гравець іде і `stepsSound` не грає -> `stepsSound.play()`
+- якщо не йде і звук грає -> `stepsSound.stop()`
+
+### 5) Відтворення підбирання ключа
+
+У `collectAtPlayerCell()` коли підняли ключ:
+
+```cpp
+keySound.play();
+```
+
+### 6) Лінкування при збірці
+
+Додай аудіо-модуль:
+
+```bash
+-lsfml-audio
+```
+
+Повна команда стане така:
+
+```bash
+g++ -std=c++20 -O2 -Wall -Wextra -pedantic main.cpp LabyrinthGame.cpp -o labyrinth.exe \
+  -IC:/SFML-3.0.2/include \
+  -LC:/SFML-3.0.2/lib \
+  -lsfml-graphics -lsfml-window -lsfml-system -lsfml-audio
+```
+
+
+## Карта та навігація
+
+- За замовчуванням видно круглу мінікарту з невеликим радіусом навколо героя.
+- Натисни `M`, щоб відкрити повну карту всієї локації.
+- Натисни `M` ще раз, щоб повернутись до звичайного вигляду.
+
+
+
+## Структура файлів
+
+- `main.cpp` — лише точка входу (`main`).
+- `LabyrinthGame.hpp` — оголошення класу гри (інтерфейс).
+- `LabyrinthGame.cpp` — вся логіка/рендер/геймплей (реалізація).
+- `GameTypes.hpp` — базові структури типів (наприклад `KeyInfo`).
