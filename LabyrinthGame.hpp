@@ -31,6 +31,7 @@ private:
 
     std::vector<std::string> map;
     std::vector<KeyInfo> keys;
+    std::vector<EnemyInfo> enemies;
 
     // ===== [Стан гравця] =====
     sf::Vector2f player{1.5F, 1.5F};
@@ -38,6 +39,10 @@ private:
     float walkWavePhase = 0.0F;
     float idleSwayPhase = 0.0F;
     float cameraBobOffset = 0.0F;
+    float hp = 100.0F;
+    float stamina = 100.0F;
+    float flightVisualTimer = 0.0F;
+    float sprintVisualTimer = 0.0F;
 
     // ===== [Стан проходження] =====
     int score = 0;
@@ -47,6 +52,10 @@ private:
 
     sf::Font font;
     bool fontLoaded = false;
+    bool enemySpriteAssetsLoaded = false;
+    std::vector<sf::Texture> enemyWalkFrames;
+    std::vector<sf::Texture> enemyAttackFrames;
+    std::vector<sf::Texture> enemyAlertFrames;
 
     // ===== [Утиліти карти] =====
     bool isInsideMap(int x, int y) const;
@@ -57,6 +66,9 @@ private:
     // ===== [Генерація контенту] =====
     void buildLargeMap();
     void placeKeysRandomly();
+    void spawnEnemiesRandomly();
+    bool loadEnemyFrameSet(const std::string& patternPrefix, int count, std::vector<sf::Texture>& outFrames);
+    void loadEnemySpriteAssets();
 
     // ===== [Геймплей] =====
     void processEvents();
@@ -66,6 +78,11 @@ private:
     void collectAtPlayerCell();
     void unlockDoorAndSpawnExit();
     void checkWin();
+    void updateEnemies(float dt);
+    bool hasLineOfSight(const sf::Vector2f& from, const sf::Vector2f& to, float step) const;
+    bool isWalkableEnemyCell(int x, int y) const;
+    void moveEnemyToward(EnemyInfo& enemy, const sf::Vector2f& target, float dt, float speedScale = 1.0F);
+    sf::Vector2f chooseEnemyWanderTarget(const sf::Vector2f& origin) const;
 
     // ===== [Рендер] =====
     sf::Color makeSimpleWallColor(float distanceToWall, char hitTile) const;

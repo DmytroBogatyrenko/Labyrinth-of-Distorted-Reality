@@ -2,9 +2,20 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include <iostream>
 #include <optional>
 #include <random>
+
+namespace {
+enum EnemyState : int {
+    EnemyWander = 0,
+    EnemyAlert = 1,
+    EnemyChase = 2,
+    EnemySearch = 3,
+    EnemyAttack = 4
+};
+}
 
 LabyrinthGame::LabyrinthGame()
     : window(sf::VideoMode({screenWidth, screenHeight}), "Лабіринт Спотвореної Реальності - First Person (SFML)") {
@@ -13,12 +24,15 @@ LabyrinthGame::LabyrinthGame()
     // ===== [Налаштування карти гри] =====
     buildLargeMap();
     placeKeysRandomly();
+    spawnEnemiesRandomly();
 
     // ===== [Налаштування шрифту HUD] =====
     fontLoaded = font.openFromFile("arial.ttf");
     if (!fontLoaded) {
         std::cerr << "[Попередження] Не знайдено arial.ttf. Текст HUD буде вимкнено.\n";
     }
+
+    loadEnemySpriteAssets();
 }
 
 void LabyrinthGame::run() {
@@ -281,6 +295,114 @@ void LabyrinthGame::placeKeysRandomly() {
     }
 }
 
+void LabyrinthGame::spawnEnemiesRandomly() {
+    enemies.clear();
+
+    std::vector<sf::Vector2f> candidates;
+    candidates.reserve(mapWidth * mapHeight);
+
+    for (int y = 2; y < mapHeight - 2; ++y) {
+        for (int x = 2; x < mapWidth - 2; ++x) {
+            if (map[y][x] != '.') {
+                continue;
+            }
+
+            if (x < 6 && y < 6) {
+                continue;
+            }
+
+            candidates.emplace_back(static_cast<float>(x) + 0.5F, static_cast<float>(y) + 0.5F);
+        }
+    }
+
+    std::mt19937 rng(std::random_device{}());
+    std::shuffle(candidates.begin(), candidates.end(), rng);
+
+    constexpr int enemyCount = 4;
+    for (const auto& candidate : candidates) {
+        bool farEnough = true;
+        for (const auto& enemy : enemies) {
+            const sf::Vector2f d = enemy.position - candidate;
+            if (d.x * d.x + d.y * d.y < 70.0F) {
+                farEnough = false;
+                break;
+            }
+        }
+        if (!farEnough) {
+            continue;
+        }
+
+        EnemyInfo enemy;
+        enemy.position = candidate;
+        enemy.speed = 1.3F;
+        enemy.state = EnemyWander;
+        enemy.wanderTarget = candidate;
+        enemies.push_back(enemy);
+
+        if (static_cast<int>(enemies.size()) >= enemyCount) {
+            break;
+        }
+    }
+}
+
+bool LabyrinthGame::loadEnemyFrameSet(const std::string& patternPrefix, int count, std::vector<sf::Texture>& outFrames) {
+    outFrames.clear();
+    outFrames.reserve(static_cast<std::size_t>(count));
+
+    for (int i = 0; i < count; ++i) {
+        sf::Texture frame;
+        const std::string path = patternPrefix + std::to_string(i) + ".png";
+        if (!frame.loadFromFile(path)) {
+            return false;
+        }
+        frame.setSmooth(true);
+        outFrames.push_back(std::move(frame));
+    }
+
+    return !outFrames.empty();
+}
+
+void LabyrinthGame::loadEnemySpriteAssets() {
+    const bool walkOk = loadEnemyFrameSet("assets/npc/walk_", 6, enemyWalkFrames);
+    const bool attackOk = loadEnemyFrameSet("assets/npc/attack_", 4, enemyAttackFrames);
+    const bool alertOk = loadEnemyFrameSet("assets/npc/alert_", 3, enemyAlertFrames);
+
+    // Найпростіший fallback: один файл model.png на всі стани.
+    bool singleModelOk = false;
+    if (!walkOk) {
+        sf::Texture single;
+        if (single.loadFromFile("assets/npc/model.png")) {
+            single.setSmooth(true);
+            enemyWalkFrames.clear();
+            enemyWalkFrames.push_back(std::move(single));
+            singleModelOk = true;
+        }
+    }
+
+    // Мінімальний набір: або walk-кадри, або один model.png.
+    enemySpriteAssetsLoaded = walkOk || singleModelOk;
+    if (enemySpriteAssetsLoaded && !attackOk) {
+        enemyAttackFrames = enemyWalkFrames; // fallback на walk
+    }
+    if (enemySpriteAssetsLoaded && !alertOk) {
+        enemyAlertFrames = enemyWalkFrames; // fallback на walk
+    }
+
+    if (!enemySpriteAssetsLoaded) {
+        const bool hasFbxSource = std::filesystem::exists("assets/npc/model.fbx");
+        enemyWalkFrames.clear();
+        enemyAttackFrames.clear();
+        enemyAlertFrames.clear();
+        std::cerr << "[Попередження] NPC спрайти не знайдені (мінімум walk_* або model.png). Використовується fallback-силует.\n";
+        if (hasFbxSource) {
+            std::cerr << "[INFO] Знайдено assets/npc/model.fbx. Згенеруй model.png командою з README (Blender headless).\n";
+        }
+    } else {
+        std::cerr << "[INFO] NPC спрайти завантажено. walk=" << enemyWalkFrames.size()
+            << ", attack=" << enemyAttackFrames.size() << ", alert=" << enemyAlertFrames.size() << '\n';
+    }
+}
+
 void LabyrinthGame::processEvents() {
     while (const std::optional event = window.pollEvent()) {
         if (event->is<sf::Event::Closed>()) {
@@ -306,7 +428,12 @@ void LabyrinthGame::update(float dt) {
 
     // ===== [Налаштування руху гравця] =====
     const float rotationSpeed = 1.8F;
-    const float moveSpeed = 3.0F;
+    const float baseMoveSpeed = 3.0F;
+    const float sprintMultiplier = 1.45F;
+    const float flightMultiplier = 2.1F;
+    const float sprintDrainPerSecond = 16.0F;
+    const float flightDrainPerSecond = 45.0F;
+    const float staminaRegenPerSecond = 20.0F;
 
     if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::A) || sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Left)) {
         playerAngle -= rotationSpeed * dt;
@@ -326,21 +453,59 @@ void LabyrinthGame::update(float dt) {
     }
 
     const bool isWalking = (moveDir.x != 0.F || moveDir.y != 0.F);
+    const bool shiftPressed = sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LShift)
+        || sf::Keyboard::isKeyPressed(sf::Keyboard::Key::RShift);
+    const bool spacePressed = sf::Keyboard::isKeyPressed(sf::Keyboard::Key::Space);
+
+    bool isSprinting = false;
+    bool isFlightJump = false;
+    float moveSpeed = baseMoveSpeed;
+
+    if (shiftPressed && stamina > 1.0F && isWalking) {
+        isSprinting = true;
+        moveSpeed *= sprintMultiplier;
+        stamina -= sprintDrainPerSecond * dt;
+        sprintVisualTimer = std::min(1.0F, sprintVisualTimer + dt * 2.8F);
+    } else {
+        sprintVisualTimer = std::max(0.0F, sprintVisualTimer - dt * 2.2F);
+    }
+
+    if (shiftPressed && spacePressed && stamina > 1.0F) {
+        isFlightJump = true;
+        moveSpeed *= flightMultiplier;
+        stamina -= flightDrainPerSecond * dt;
+        flightVisualTimer = std::min(0.35F, flightVisualTimer + dt * 2.2F);
+    } else {
+        flightVisualTimer = std::max(0.0F, flightVisualTimer - dt * 2.6F);
+    }
+
+    if (!isSprinting && !isFlightJump) {
+        stamina += staminaRegenPerSecond * dt;
+    }
+
+    stamina = std::clamp(stamina, 0.0F, 100.0F);
     movePlayer(moveDir, moveSpeed * dt);
 
     // ===== [Пружиниста хода / хвиля камери] =====
     if (isWalking) {
-        walkWavePhase += dt * 10.5F;
-        cameraBobOffset = std::sin(walkWavePhase) * 6.0F;
+        const float walkFreq = 10.5F + sprintVisualTimer * 4.0F + flightVisualTimer * 2.5F;
+        const float walkAmp = 6.0F + sprintVisualTimer * 5.0F + flightVisualTimer * 7.0F;
+        walkWavePhase += dt * walkFreq;
+        cameraBobOffset = std::sin(walkWavePhase) * walkAmp;
     } else {
         // ===== [Легке коливання в спокої: ефект "паморочиться голова"] =====
         idleSwayPhase += dt * 1.9F;
         cameraBobOffset = std::sin(idleSwayPhase) * 1.4F;
     }
 
+    if (flightVisualTimer > 0.0F) {
+        cameraBobOffset -= 11.0F * flightVisualTimer;
+    }
+
     revealNearbyKeys();
     collectAtPlayerCell();
     unlockDoorAndSpawnExit();
+    updateEnemies(dt);
     checkWin();
 }
 
@@ -365,6 +530,174 @@ void LabyrinthGame::movePlayer(const sf::Vector2f& dir, float distanceStep) {
     }
 
     player = candidate;
+}
+
+bool LabyrinthGame::hasLineOfSight(const sf::Vector2f& from, const sf::Vector2f& to, float step) const {
+    const sf::Vector2f delta = to - from;
+    const float distance = std::sqrt(delta.x * delta.x + delta.y * delta.y);
+    if (distance <= 0.001F) {
+        return true;
+    }
+
+    const sf::Vector2f dir = delta / distance;
+    for (float t = 0.0F; t < distance; t += step) {
+        const sf::Vector2f p = from + dir * t;
+        const int tx = static_cast<int>(p.x);
+        const int ty = static_cast<int>(p.y);
+        if (!isInsideMap(tx, ty)) {
+            return false;
+        }
+        if (isBlockingTile(tileAt(tx, ty))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool LabyrinthGame::isWalkableEnemyCell(int x, int y) const {
+    if (!isInsideMap(x, y)) {
+        return false;
+    }
+    const char tile = tileAt(x, y);
+    return tile == '.' || tile == 'E' || (tile >= '1' && tile <= '3');
+}
+
+void LabyrinthGame::moveEnemyToward(EnemyInfo& enemy, const sf::Vector2f& target, float dt, float speedScale) {
+    sf::Vector2f delta = target - enemy.position;
+    const float len = std::sqrt(delta.x * delta.x + delta.y * delta.y);
+    if (len <= 0.001F) {
+        return;
+    }
+
+    const sf::Vector2f dir = delta / len;
+    sf::Vector2f candidate = enemy.position + dir * enemy.speed * speedScale * dt;
+
+    const int tx = static_cast<int>(candidate.x);
+    const int ty = static_cast<int>(candidate.y);
+    if (isWalkableEnemyCell(tx, ty)) {
+        enemy.position = candidate;
+    }
+}
+
+sf::Vector2f LabyrinthGame::chooseEnemyWanderTarget(const sf::Vector2f& origin) const {
+    static thread_local std::mt19937 rng(std::random_device{}());
+    std::uniform_int_distribution<int> offset(-6, 6);
+
+    for (int i = 0; i < 25; ++i) {
+        const int cx = static_cast<int>(origin.x) + offset(rng);
+        const int cy = static_cast<int>(origin.y) + offset(rng);
+        if (!isWalkableEnemyCell(cx, cy)) {
+            continue;
+        }
+        if (countWallNeighbors(cx, cy) >= 7) {
+            continue;
+        }
+        return sf::Vector2f(static_cast<float>(cx) + 0.5F, static_cast<float>(cy) + 0.5F);
+    }
+
+    return origin;
+}
+
+void LabyrinthGame::updateEnemies(float dt) {
+    const sf::Vector2f toPlayerBase = player;
+
+    for (auto& enemy : enemies) {
+        enemy.attackCooldown = std::max(0.0F, enemy.attackCooldown - dt);
+
+        const sf::Vector2f toPlayer = toPlayerBase - enemy.position;
+        const float distanceToPlayer = std::sqrt(toPlayer.x * toPlayer.x + toPlayer.y * toPlayer.y);
+        const bool enemyCanSeePlayer = distanceToPlayer < 9.5F && hasLineOfSight(enemy.position, player, 0.10F);
+
+        const sf::Vector2f toEnemy = enemy.position - player;
+        const float playerDistToEnemy = std::sqrt(toEnemy.x * toEnemy.x + toEnemy.y * toEnemy.y);
+        const float playerAngleToEnemy = std::atan2(toEnemy.y, toEnemy.x);
+        float playerAngleDiff = playerAngleToEnemy - playerAngle;
+        while (playerAngleDiff > 3.14159F) {
+            playerAngleDiff -= 6.28318F;
+        }
+        while (playerAngleDiff < -3.14159F) {
+            playerAngleDiff += 6.28318F;
+        }
+        enemy.visibleToPlayer = playerDistToEnemy < 13.0F
+            && std::abs(playerAngleDiff) < fov * 0.58F
+            && hasLineOfSight(player, enemy.position, 0.08F);
+
+        enemy.animPhase += dt * (enemy.state == EnemyChase ? 10.0F : 6.0F);
+
+        if (enemyCanSeePlayer) {
+            enemy.lastSeenPlayerPos = player;
+            enemy.hasLastSeen = true;
+            if (enemy.state == EnemyWander || enemy.state == EnemySearch) {
+                enemy.state = EnemyAlert;
+                enemy.stateTimer = 0.75F; // спец-анімація "нахил голови"
+            }
+        }
+
+        switch (enemy.state) {
+            case EnemyWander: {
+                if (enemy.wanderTarget.x == 0.0F && enemy.wanderTarget.y == 0.0F) {
+                    enemy.wanderTarget = chooseEnemyWanderTarget(enemy.position);
+                }
+                moveEnemyToward(enemy, enemy.wanderTarget, dt, 0.8F);
+                if (std::hypot(enemy.wanderTarget.x - enemy.position.x, enemy.wanderTarget.y - enemy.position.y) < 0.45F) {
+                    enemy.wanderTarget = chooseEnemyWanderTarget(enemy.position);
+                }
+                break;
+            }
+            case EnemyAlert: {
+                enemy.stateTimer -= dt;
+                if (enemy.stateTimer <= 0.0F) {
+                    enemy.state = EnemyChase;
+                    enemy.chasing = true;
+                }
+                break;
+            }
+            case EnemyChase: {
+                moveEnemyToward(enemy, player, dt, 1.25F);
+                if (!enemyCanSeePlayer) {
+                    enemy.state = EnemySearch;
+                    enemy.stateTimer = 2.8F;
+                }
+                if (distanceToPlayer < 1.15F && enemy.attackCooldown <= 0.0F) {
+                    enemy.state = EnemyAttack;
+                    enemy.stateTimer = 0.30F;
+                    enemy.attackCooldown = 1.2F;
+                    hp = std::max(0.0F, hp - 15.0F);
+                }
+                break;
+            }
+            case EnemySearch: {
+                if (enemy.hasLastSeen) {
+                    moveEnemyToward(enemy, enemy.lastSeenPlayerPos, dt, 1.0F);
+                }
+                enemy.stateTimer -= dt;
+                if (enemyCanSeePlayer) {
+                    enemy.state = EnemyAlert;
+                    enemy.stateTimer = 0.65F;
+                } else if (enemy.stateTimer <= 0.0F
+                    || std::hypot(enemy.lastSeenPlayerPos.x - enemy.position.x, enemy.lastSeenPlayerPos.y - enemy.position.y) < 0.6F) {
+                    enemy.state = EnemyWander;
+                    enemy.chasing = false;
+                    enemy.wanderTarget = chooseEnemyWanderTarget(enemy.position);
+                }
+                break;
+            }
+            case EnemyAttack: {
+                enemy.stateTimer -= dt;
+                if (enemy.stateTimer <= 0.0F) {
+                    enemy.state = enemyCanSeePlayer ? EnemyChase : EnemySearch;
+                    if (enemy.state == EnemySearch) {
+                        enemy.stateTimer = 2.2F;
+                    }
+                }
+                break;
+            }
+            default:
+                enemy.state = EnemyWander;
+                break;
+        }
+
+    }
 }
 
 void LabyrinthGame::revealNearbyKeys() {
@@ -436,7 +769,13 @@ sf::Color LabyrinthGame::makeSimpleWallColor(float distanceToWall, char hitTile)
 
 void LabyrinthGame::drawFirstPersonWorld() {
     sf::RectangleShape strip;
+    const float sprintZoom = 0.08F * sprintVisualTimer;
+    const float jumpZoom = 0.16F * flightVisualTimer;
+    const float zoomRatio = std::clamp(1.0F - sprintZoom - jumpZoom, 0.74F, 1.0F);
+    const float dynamicFov = fov * zoomRatio;
     const float horizonY = static_cast<float>(screenHeight) / 2.F + cameraBobOffset;
+    const float screenShakeX = std::sin(walkWavePhase * 1.25F) * (2.0F + sprintVisualTimer * 4.0F + flightVisualTimer * 6.0F);
+    std::vector<float> wallDistances(screenWidth, maxDepth);
 
     sf::RectangleShape sky(sf::Vector2f(static_cast<float>(screenWidth), horizonY));
     sky.setFillColor(sf::Color(206, 206, 210));
@@ -448,7 +787,8 @@ void LabyrinthGame::drawFirstPersonWorld() {
     window.draw(ground);
 
     for (unsigned int x = 0; x < screenWidth; ++x) {
-        const float rayAngle = (playerAngle - fov / 2.F) + (static_cast<float>(x) / static_cast<float>(screenWidth)) * fov;
+        const float rayAngle =
+            (playerAngle - dynamicFov / 2.F) + (static_cast<float>(x) / static_cast<float>(screenWidth)) * dynamicFov;
         const sf::Vector2f rayDir{std::cos(rayAngle), std::sin(rayAngle)};
 
         float distanceToWall = 0.F;
@@ -473,14 +813,109 @@ void LabyrinthGame::drawFirstPersonWorld() {
         }
 
         const float correctedDistance = std::max(0.001F, distanceToWall * std::cos(rayAngle - playerAngle));
+        wallDistances[x] = correctedDistance;
         const int wallHeight = static_cast<int>(static_cast<float>(screenHeight) / correctedDistance);
         const int ceiling = std::max(0, static_cast<int>(horizonY) - wallHeight / 2);
         const int floor = std::min(static_cast<int>(screenHeight), ceiling + wallHeight);
 
-        strip.setPosition(sf::Vector2f(static_cast<float>(x), static_cast<float>(ceiling)));
+        strip.setPosition(sf::Vector2f(static_cast<float>(x) + screenShakeX, static_cast<float>(ceiling)));
         strip.setSize(sf::Vector2f(1.F, static_cast<float>(std::max(0, floor - ceiling))));
         strip.setFillColor(makeSimpleWallColor(distanceToWall, hitTile));
         window.draw(strip);
+    }
+
+    // ===== [Малюємо NPC як чорні "модельки" людей поверх стін] =====
+    for (const auto& enemy : enemies) {
+        if (!enemy.visibleToPlayer) {
+            continue;
+        }
+
+        const sf::Vector2f toEnemy = enemy.position - player;
+        const float dist = std::sqrt(toEnemy.x * toEnemy.x + toEnemy.y * toEnemy.y);
+        if (dist < 0.1F || dist >= maxDepth) {
+            continue;
+        }
+
+        float angleToEnemy = std::atan2(toEnemy.y, toEnemy.x) - playerAngle;
+        while (angleToEnemy > 3.14159F) {
+            angleToEnemy -= 6.28318F;
+        }
+        while (angleToEnemy < -3.14159F) {
+            angleToEnemy += 6.28318F;
+        }
+        if (std::abs(angleToEnemy) > dynamicFov * 0.60F) {
+            continue;
+        }
+
+        const float screenX = ((angleToEnemy + dynamicFov / 2.0F) / dynamicFov) * static_cast<float>(screenWidth);
+        const int columnX = static_cast<int>(screenX);
+        if (columnX < 0 || columnX >= static_cast<int>(screenWidth)) {
+            continue;
+        }
+        if (dist > wallDistances[columnX]) {
+            continue; // за стіною
+        }
+
+        const float attackScale = (enemy.state == EnemyAttack) ? 1.25F : 1.0F;
+        const float bodyHeight = (static_cast<float>(screenHeight) / dist) * 0.95F * attackScale;
+        const float bodyWidth = std::max(8.0F, bodyHeight * 0.30F);
+        const float walkSwing = std::sin(enemy.animPhase) * (enemy.state == EnemyWander || enemy.state == EnemyChase ? 6.5F : 2.0F);
+        const float headTilt = (enemy.state == EnemyAlert) ? (std::sin(enemy.animPhase * 0.8F) * 9.0F) : 0.0F;
+        const float baseY = horizonY + cameraBobOffset * 0.12F;
+
+        if (enemySpriteAssetsLoaded) {
+            const std::vector<sf::Texture>* frameSet = &enemyWalkFrames;
+            float animSpeed = 8.0F;
+            if (enemy.state == EnemyAttack) {
+                frameSet = &enemyAttackFrames;
+                animSpeed = 12.0F;
+            } else if (enemy.state == EnemyAlert) {
+                frameSet = &enemyAlertFrames;
+                animSpeed = 5.0F;
+            }
+
+            if (!frameSet->empty()) {
+                const int frameIndex = static_cast<int>(std::abs(enemy.animPhase * animSpeed))
+                    % static_cast<int>(frameSet->size());
+                sf::Sprite enemySprite((*frameSet)[frameIndex]);
+                const sf::Vector2u texSize = (*frameSet)[frameIndex].getSize();
+                if (texSize.x > 0 && texSize.y > 0) {
+                    enemySprite.setOrigin(sf::Vector2f(static_cast<float>(texSize.x) / 2.F, static_cast<float>(texSize.y) / 2.F));
+                    enemySprite.setPosition(sf::Vector2f(screenX + screenShakeX + headTilt * 0.35F, baseY + walkSwing));
+                    enemySprite.setColor(sf::Color(255, 255, 255, 235));
+                    enemySprite.setScale(sf::Vector2f(bodyHeight / static_cast<float>(texSize.y), bodyHeight / static_cast<float>(texSize.y)));
+                    window.draw(enemySprite);
+                    continue;
+                }
+            }
+        }
+
+        // Fallback, якщо спрайти не завантажені.
+        sf::RectangleShape body(sf::Vector2f(bodyWidth, bodyHeight * 0.63F));
+        body.setOrigin(body.getGeometricCenter());
+        body.setPosition(sf::Vector2f(screenX + screenShakeX, baseY + walkSwing));
+        body.setFillColor(sf::Color(7, 7, 7));
+        window.draw(body);
+
+        sf::CircleShape head(bodyWidth * 0.34F);
+        head.setOrigin(head.getGeometricCenter());
+        head.setPosition(sf::Vector2f(screenX + screenShakeX + headTilt, baseY - bodyHeight * 0.40F + walkSwing));
+        head.setFillColor(sf::Color::Black);
+        window.draw(head);
+
+        sf::RectangleShape armL(sf::Vector2f(bodyWidth * 0.18F, bodyHeight * 0.34F));
+        armL.setOrigin(armL.getGeometricCenter());
+        armL.setPosition(sf::Vector2f(screenX - bodyWidth * 0.40F + screenShakeX, baseY - bodyHeight * 0.04F + walkSwing));
+        armL.setRotation(sf::degrees(-25.0F + std::sin(enemy.animPhase) * 35.0F));
+        armL.setFillColor(sf::Color(10, 10, 10));
+        window.draw(armL);
+
+        sf::RectangleShape armR(sf::Vector2f(bodyWidth * 0.18F, bodyHeight * 0.34F));
+        armR.setOrigin(armR.getGeometricCenter());
+        armR.setPosition(sf::Vector2f(screenX + bodyWidth * 0.40F + screenShakeX, baseY - bodyHeight * 0.04F + walkSwing));
+        armR.setRotation(sf::degrees(25.0F - std::sin(enemy.animPhase) * 35.0F));
+        armR.setFillColor(sf::Color(10, 10, 10));
+        window.draw(armR);
     }
 }
 
@@ -559,6 +994,28 @@ void LabyrinthGame::drawMiniMap() {
     line[1].position = sf::Vector2f(center.x + std::cos(playerAngle) * 20.F, center.y + std::sin(playerAngle) * 20.F);
     line[1].color = sf::Color::Cyan;
     window.draw(line, 2, sf::PrimitiveType::Lines);
+
+    for (const auto& enemy : enemies) {
+        if (!enemy.visibleToPlayer) {
+            continue;
+        }
+        const int ex = static_cast<int>(enemy.position.x);
+        const int ey = static_cast<int>(enemy.position.y);
+        const int dx = ex - px;
+        const int dy = ey - py;
+        const float dist = std::sqrt(static_cast<float>(dx * dx + dy * dy));
+        if (dist > static_cast<float>(visionRadiusCells)) {
+            continue;
+        }
+
+        sf::CircleShape e(3.8F);
+        e.setOrigin(e.getGeometricCenter());
+        e.setPosition(sf::Vector2f(center.x + static_cast<float>(dx) * miniTile, center.y + static_cast<float>(dy) * miniTile));
+        e.setFillColor(sf::Color::Black);
+        e.setOutlineThickness(1.F);
+        e.setOutlineColor(sf::Color(120, 120, 120));
+        window.draw(e);
+    }
 }
 
 void LabyrinthGame::drawFullMapOverlay() {
@@ -611,6 +1068,20 @@ void LabyrinthGame::drawFullMapOverlay() {
     fullMapLine[1].color = sf::Color::Cyan;
     window.draw(fullMapLine, 2, sf::PrimitiveType::Lines);
 
+    for (const auto& enemy : enemies) {
+        if (!enemy.visibleToPlayer) {
+            continue;
+        }
+
+        sf::CircleShape marker(std::max(2.2F, tileSize * 0.30F));
+        marker.setOrigin(marker.getGeometricCenter());
+        marker.setPosition(sf::Vector2f(startX + enemy.position.x * tileSize, startY + enemy.position.y * tileSize));
+        marker.setFillColor(sf::Color::Black);
+        marker.setOutlineThickness(1.F);
+        marker.setOutlineColor(sf::Color(110, 110, 120));
+        window.draw(marker);
+    }
+
     if (fontLoaded) {
         sf::Text title(font, "ПОВНА КАРТА (M - закрити)", 24);
         title.setFillColor(sf::Color::White);
@@ -621,7 +1092,7 @@ void LabyrinthGame::drawFullMapOverlay() {
 
 void LabyrinthGame::drawHud() {
     constexpr float panelW = 220.F;
-    constexpr float panelH = 72.F;
+    constexpr float panelH = 74.F;
     const float panelX = static_cast<float>(screenWidth) - panelW - 16.F;
     const float panelY = 16.F;
 
@@ -643,22 +1114,59 @@ void LabyrinthGame::drawHud() {
     }
 
     if (!fontLoaded) {
-        return;
+        // Навіть без шрифту малюємо вертикальні колонки HP/витривалості.
+    } else {
+        sf::Text corner(font);
+        corner.setCharacterSize(18);
+        corner.setFillColor(sf::Color(220, 220, 230));
+        corner.setPosition(sf::Vector2f(panelX + 16.F, panelY + 10.F));
+        corner.setString("КЛЮЧІ: " + std::to_string(score) + "/3");
+        window.draw(corner);
+
+        sf::Text controls(font);
+        controls.setCharacterSize(18);
+        controls.setFillColor(sf::Color::White);
+        controls.setPosition(sf::Vector2f(10.F, static_cast<float>(screenHeight - 52)));
+        controls.setString("W/S - рух, A/D - поворот, Shift - біг, Shift+Space - стрибок-політ, M - карта, ESC - вихід");
+        window.draw(controls);
     }
 
-    sf::Text corner(font);
-    corner.setCharacterSize(18);
-    corner.setFillColor(sf::Color(220, 220, 230));
-    corner.setPosition(sf::Vector2f(panelX + 16.F, panelY + 10.F));
-    corner.setString("КЛЮЧІ: " + std::to_string(score) + "/3");
-    window.draw(corner);
+    const float columnX = 22.F;
+    const float columnBottom = static_cast<float>(screenHeight) - 24.F;
+    const float barW = 20.F;
+    const float barH = 160.F;
+    const float gap = 14.F;
 
-    sf::Text controls(font);
-    controls.setCharacterSize(20);
-    controls.setFillColor(sf::Color::White);
-    controls.setPosition(sf::Vector2f(10.F, static_cast<float>(screenHeight - 44)));
-    controls.setString("W/S - рух, A/D - поворот, M - карта, ESC - вихід");
-    window.draw(controls);
+    const auto drawVerticalBar = [this, columnBottom, barW, barH](float x, float ratio, const sf::Color& fill) {
+        sf::RectangleShape frame(sf::Vector2f(barW, barH));
+        frame.setPosition(sf::Vector2f(x, columnBottom - barH));
+        frame.setFillColor(sf::Color(16, 16, 20, 220));
+        frame.setOutlineThickness(2.F);
+        frame.setOutlineColor(sf::Color(210, 210, 220));
+        window.draw(frame);
+
+        const float clampedRatio = std::clamp(ratio, 0.0F, 1.0F);
+        const float valueH = (barH - 4.F) * clampedRatio;
+        sf::RectangleShape fillRect(sf::Vector2f(barW - 4.F, valueH));
+        fillRect.setPosition(sf::Vector2f(x + 2.F, columnBottom - 2.F - valueH));
+        fillRect.setFillColor(fill);
+        window.draw(fillRect);
+    };
+
+    drawVerticalBar(columnX, hp / 100.0F, sf::Color(220, 40, 40));
+    drawVerticalBar(columnX + barW + gap, stamina / 100.0F, sf::Color(45, 120, 255));
+
+    if (fontLoaded) {
+        sf::Text hpMark(font, "+", 34);
+        hpMark.setFillColor(sf::Color(245, 50, 50));
+        hpMark.setPosition(sf::Vector2f(columnX + 2.F, columnBottom + 4.F));
+        window.draw(hpMark);
+
+        sf::Text stMark(font, "S", 22);
+        stMark.setFillColor(sf::Color(90, 150, 255));
+        stMark.setPosition(sf::Vector2f(columnX + barW + gap + 3.F, columnBottom + 10.F));
+        window.draw(stMark);
+    }
 }
 
 void LabyrinthGame::drawPortalScreen() {

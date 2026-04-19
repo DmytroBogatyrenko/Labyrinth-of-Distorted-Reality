@@ -12,6 +12,7 @@
         "-Wextra",
         "-pedantic",
         "main.cpp",
+        "LabyrinthGame.cpp",
         "-o",
         "labyrinth.exe",
         "-IC:/SFML-3.0.2/include",
