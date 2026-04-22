@@ -1,0 +1,1 @@
+target_link_libraries(LabyrinthGame PRIVATE sfml-audio)
