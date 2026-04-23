@@ -26,10 +26,14 @@ private:
     static constexpr float fov      = 3.14159F / 3.0F;
     static constexpr float maxDepth = 24.0F;
 
+    // ===== [Ядро SFML] =====
     sf::RenderWindow window;
     sf::Clock deltaClock;
     sf::Clock portalClock;
+    sf::Font font;
+    bool fontLoaded = false;
 
+    // ===== [Дані світу] =====
     std::vector<std::string> map;
     std::vector<KeyInfo>     keys;
     std::vector<EnemyInfo>   enemies;
@@ -45,11 +49,19 @@ private:
     float flightVisualTimer = 0.0F;
     float sprintVisualTimer = 0.0F;
 
-    // ===== [Руки гравця] =====
-    float handSwayPhase = 0.0F;
-    float handBobY      = 0.0F;
-    float handBobX      = 0.0F;
-    float handIdlePhase = 0.0F;
+    // ===== [Текстури та Спрайти (Важливий порядок!)] =====
+    // Спершу текстури, потім спрайти
+    sf::Texture handsTexture;
+    sf::Sprite  handsSprite;
+    bool        handsLoaded = false;
+    float       handSwayPhase = 0.0F;
+    float       handBobY      = 0.0F;
+    float       handBobX      = 0.0F;
+    float       handIdlePhase = 0.0F;
+
+    sf::Texture screamerTexture;
+    sf::Sprite  screamerSprite;
+    bool        screamerLoaded = false;
 
     // ===== [Стан проходження] =====
     int  score       = 0;
@@ -63,25 +75,18 @@ private:
     float flickerPhase         = 0.0F;
     float ambientDarknessAlpha = 0.0F;
 
-    sf::Font font;
-    bool fontLoaded              = false;
+    // ===== [Вороги] =====
     bool enemySpriteAssetsLoaded = false;
     std::vector<sf::Texture> enemyWalkFrames;
     std::vector<sf::Texture> enemyAttackFrames;
     std::vector<sf::Texture> enemyAlertFrames;
 
-    // ===== [Скрімер] =====
-    sf::Texture screamerTexture;
-    bool  screamerLoaded               = false;
+    // ===== [Логіка Скрімера] =====
     bool  screamerActive               = false;
     float screamerShowTimer            = 0.0F;
     float screamerTimeSinceLastTrigger = 0.0F;
     float screamerNextTrigger          = 30.0F;
     static constexpr float screamerShowDuration = 0.70F;
-
-    void resetScreamerTimer();
-    void updateScreamer(float dt);
-    void drawScreamer();
 
     // ===== [Аудіо] =====
     sf::SoundBuffer          screamerSoundBuffer;
@@ -95,8 +100,15 @@ private:
     sf::SoundBuffer          pickupSoundBuffer;
     std::optional<sf::Sound> pickupSound;
 
+    // ===== [Приватні методи логіки] =====
+    void processEvents();
+    void update(float dt);
+    void render();
+
     void loadSounds();
     void updateFootsteps(float dt, bool isWalking, bool isSprinting);
+    void resetScreamerTimer();
+    void updateScreamer(float dt);
 
     // ===== [Утиліти карти] =====
     bool isInsideMap(int x, int y) const;
@@ -111,9 +123,7 @@ private:
     bool loadEnemyFrameSet(const std::string& patternPrefix, int count, std::vector<sf::Texture>& outFrames);
     void loadEnemySpriteAssets();
 
-    // ===== [Геймплей] =====
-    void processEvents();
-    void update(float dt);
+    // ===== [Геймплейні механіки] =====
     void movePlayer(const sf::Vector2f& dir, float distanceStep);
     void revealNearbyKeys();
     void collectAtPlayerCell();
@@ -125,7 +135,7 @@ private:
     void moveEnemyToward(EnemyInfo& enemy, const sf::Vector2f& target, float dt, float speedScale = 1.0F);
     sf::Vector2f chooseEnemyWanderTarget(const sf::Vector2f& origin) const;
 
-    // ===== [Рендер] =====
+    // ===== [Рендер методи] =====
     sf::Color makeSimpleWallColor(float distanceToWall, char hitTile) const;
     void drawFirstPersonWorld();
     void drawPlayerHands(bool isWalking, bool isSprinting);
@@ -135,5 +145,5 @@ private:
     void drawHud();
     void drawPortalScreen();
     void drawGameOver();
-    void render();
+    void drawScreamer();
 };
