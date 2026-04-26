@@ -52,20 +52,24 @@ void MenuScene::loadAssets() {
     };
 
     for (const char* path : fontCandidates) {
+        if (!std::filesystem::exists(path)) continue;
         if (font.openFromFile(path)) {
             fontLoaded = true;
             return;
         }
     }
     std::cerr << "[Menu] Font not found!\n";
+
 }
 
 void MenuScene::loadSounds() {
-    if (hoverBuf.loadFromFile("assets/sounds/menu_hover.wav")) {
+    if (std::filesystem::exists("assets/sounds/menu_hover.wav") &&
+        hoverBuf.loadFromFile("assets/sounds/menu_hover.wav")) {
         hoverSound.emplace(hoverBuf);
         hoverSound->setVolume(55.f);
     }
-    if (clickBuf.loadFromFile("assets/sounds/menu_click.wav")) {
+    if (std::filesystem::exists("assets/sounds/menu_click.wav") &&
+        clickBuf.loadFromFile("assets/sounds/menu_click.wav")) {
         clickSound.emplace(clickBuf);
         clickSound->setVolume(80.f);
     }

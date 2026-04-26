@@ -70,6 +70,23 @@ private:
     bool gameover    = false;
     bool showFullMap = false;
 
+        enum class EndScreen { None, GameOver, Victory };
+    enum class TransitionState { Idle, FadeOut, FadeIn };
+
+    EndScreen       activeEndScreen  = EndScreen::None;
+    EndScreen       pendingEndScreen = EndScreen::None;
+    TransitionState transitionState  = TransitionState::FadeIn;
+    float           transitionAlpha  = 255.0F;
+    float           transitionSpeed  = 145.0F;
+
+    struct EndButton {
+        sf::RectangleShape box;
+        std::optional<sf::Text> label;
+    };
+
+    EndButton restartButton;
+    EndButton menuButton;
+
     // ===== [Атмосфера / темрява] =====
     float darknessFlicker      = 0.0F;
     float flickerPhase         = 0.0F;
@@ -109,6 +126,7 @@ private:
     void updateFootsteps(float dt, bool isWalking, bool isSprinting);
     void resetScreamerTimer();
     void updateScreamer(float dt);
+    void updateTransition(float dt);
 
     // ===== [Утиліти карти] =====
     bool isInsideMap(int x, int y) const;
@@ -129,6 +147,9 @@ private:
     void collectAtPlayerCell();
     void unlockDoorAndSpawnExit();
     void checkWin();
+    void initEndButtons();
+    void centerEndButtonLabel(EndButton& button, const std::string& text, float centerX, float centerY, unsigned int size);
+    void resetGameState();
     void updateEnemies(float dt);
     bool hasLineOfSight(const sf::Vector2f& from, const sf::Vector2f& to, float step) const;
     bool isWalkableEnemyCell(int x, int y) const;
@@ -145,5 +166,7 @@ private:
     void drawHud();
     void drawPortalScreen();
     void drawGameOver();
+    void drawVictoryScreen();
+    void drawTransitionOverlay();
     void drawScreamer();
 };

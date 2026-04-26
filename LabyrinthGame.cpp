@@ -1,6 +1,7 @@
 #include "LabyrinthGame.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <filesystem>
 #include <iostream>
@@ -21,7 +22,7 @@ enum EnemyState : int {
 //  КОНСТРУКТОР
 // =====================================================================
 LabyrinthGame::LabyrinthGame()
-    : window(sf::VideoMode({screenWidth, screenHeight}), "Лабіринт Спотвореної Реальності - First Person (SFML)"),
+    : window(sf::VideoMode({screenWidth, screenHeight}), "Labyrinth of Distorted Reality - First Person (SFML)"),
         handsSprite(handsTexture),        // Прив'язуємо відразу
         screamerSprite(screamerTexture)   // Прив'язуємо відразу (для SFML 3.0)
 {
@@ -32,9 +33,23 @@ LabyrinthGame::LabyrinthGame()
     placeKeysRandomly();
     spawnEnemiesRandomly();
 
-    // 2. Шрифт
-    fontLoaded = font.openFromFile("arial.ttf");
-    if (!fontLoaded) std::cerr << "[Попередження] Не знайдено arial.ttf.\n";
+    // 2. Шрифт (із fallback як у меню)
+    constexpr std::array<const char*, 6> fontCandidates = {
+        "arial.ttf",
+        "assets/arial.ttf",
+        "assets/fonts/arial.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        "C:/Windows/Fonts/arial.ttf"
+    };
+    for (const char* path : fontCandidates) {
+        if (!std::filesystem::exists(path)) continue;
+        if (font.openFromFile(path)) {
+            fontLoaded = true;
+            break;
+        }
+    }
+    if (!fontLoaded) std::cerr << "[Попередження] Не знайдено шрифт для кнопок/тексту.\n";
 
     // 3. ЗАВАНТАЖЕННЯ РУК (Тільки один раз!)
     // Використовуємо саме "clean" версію, яку ми робили
@@ -65,7 +80,112 @@ LabyrinthGame::LabyrinthGame()
     // 5. Інші ресурси та таймери
     loadEnemySpriteAssets();
     loadSounds();
+    initEndButtons();
     resetScreamerTimer(); // Обнуляємо таймер (30 сек)
+    transitionState = TransitionState::FadeIn;
+    transitionAlpha = 255.0F;
+}
+
+
+
+void LabyrinthGame::centerEndButtonLabel(EndButton& button, const std::string& text,
+                                         float centerX, float centerY, unsigned int size) {
+    if (!fontLoaded) return;
+    button.label.emplace(font, sf::String(text), size);
+    button.label->setStyle(sf::Text::Bold);
+    button.label->setFillColor(sf::Color(245, 245, 250));
+    const auto bounds = button.label->getLocalBounds();
+    button.label->setOrigin({bounds.size.x / 2.F, bounds.size.y / 2.F});
+    button.label->setPosition({centerX, centerY - 6.F});
+}
+
+void LabyrinthGame::initEndButtons() {
+    const float sw = static_cast<float>(screenWidth);
+    const float sh = static_cast<float>(screenHeight);
+
+    restartButton.box.setSize({320.F, 62.F});
+    restartButton.box.setOrigin({160.F, 31.F});
+    restartButton.box.setPosition({sw / 2.F, sh / 2.F + 120.F});
+    restartButton.box.setFillColor(sf::Color(78, 18, 18, 240));
+    restartButton.box.setOutlineThickness(3.F);
+    restartButton.box.setOutlineColor(sf::Color(220, 70, 70, 255));
+
+    menuButton.box.setSize({320.F, 62.F});
+    menuButton.box.setOrigin({160.F, 31.F});
+    menuButton.box.setPosition({sw / 2.F, sh / 2.F + 200.F});
+    menuButton.box.setFillColor(sf::Color(20, 24, 34, 240));
+    menuButton.box.setOutlineThickness(3.F);
+    menuButton.box.setOutlineColor(sf::Color(135, 150, 195, 255));
+
+    centerEndButtonLabel(restartButton, "POCHATY ZNOVU", sw / 2.F, sh / 2.F + 120.F, 27);
+    centerEndButtonLabel(menuButton, "POVERNUTYS DO MENU", sw / 2.F, sh / 2.F + 200.F, 24);
+
+}
+
+void LabyrinthGame::resetGameState() {
+    buildLargeMap();
+    placeKeysRandomly();
+    spawnEnemiesRandomly();
+
+    player = sf::Vector2f(1.5F, 1.5F);
+    playerAngle = 0.0F;
+    walkWavePhase = 0.0F;
+    idleSwayPhase = 0.0F;
+    cameraBobOffset = 0.0F;
+    hp = 100.0F;
+    stamina = 100.0F;
+    flightVisualTimer = 0.0F;
+    sprintVisualTimer = 0.0F;
+    handSwayPhase = 0.0F;
+    handBobY = 0.0F;
+    handBobX = 0.0F;
+    handIdlePhase = 0.0F;
+
+    score = 0;
+    exitSpawned = false;
+    gameWon = false;
+    gameover = false;
+    showFullMap = false;
+
+    activeEndScreen = EndScreen::None;
+    pendingEndScreen = EndScreen::None;
+    transitionState = TransitionState::FadeIn;
+    transitionAlpha = 255.0F;
+
+    darknessFlicker = 0.0F;
+    flickerPhase = 0.0F;
+    ambientDarknessAlpha = 0.0F;
+
+    screamerActive = false;
+    screamerShowTimer = 0.0F;
+    resetScreamerTimer();
+
+    if (footstepSound.has_value()) footstepSound->stop();
+    footstepTimer = 0.0F;
+    portalClock.restart();
+}
+
+void LabyrinthGame::updateTransition(float dt) {
+    if (transitionState == TransitionState::Idle) return;
+
+    if (transitionState == TransitionState::FadeOut) {
+        transitionAlpha += transitionSpeed * dt;
+        if (transitionAlpha >= 255.0F) {
+            transitionAlpha = 255.0F;
+            activeEndScreen = pendingEndScreen;
+            transitionState = TransitionState::FadeIn;
+            if (activeEndScreen != EndScreen::None) {
+                gameover = (activeEndScreen == EndScreen::GameOver);
+                gameWon = (activeEndScreen == EndScreen::Victory);
+            }
+        }
+    } else if (transitionState == TransitionState::FadeIn) {
+        transitionAlpha -= transitionSpeed * dt;
+        if (transitionAlpha <= 0.0F) {
+            transitionAlpha = 0.0F;
+            transitionState = TransitionState::Idle;
+        }
+    }
 }
 
 // =====================================================================
@@ -420,6 +540,7 @@ void LabyrinthGame::spawnEnemiesRandomly() {
 bool LabyrinthGame::loadEnemyFrameSet(const std::string& prefix, int count,
                                        std::vector<sf::Texture>& out) {
     out.clear();
+    if (!std::filesystem::exists(prefix + "0.png")) return false;
     for (int i = 0; i < count; ++i) {
         sf::Texture f;
         if (!f.loadFromFile(prefix + std::to_string(i) + ".png")) return false;
@@ -457,7 +578,23 @@ void LabyrinthGame::processEvents() {
         if (event->is<sf::Event::Closed>()) { window.close(); return; }
         if (const auto* kp = event->getIf<sf::Event::KeyPressed>()) {
             if (kp->code == sf::Keyboard::Key::Escape) window.close();
-            if (kp->code == sf::Keyboard::Key::M) showFullMap = !showFullMap;
+                        if (kp->code == sf::Keyboard::Key::M && activeEndScreen == EndScreen::None) showFullMap = !showFullMap;
+        }
+
+        if (activeEndScreen != EndScreen::None && transitionState == TransitionState::Idle) {
+            if (const auto* mbe = event->getIf<sf::Event::MouseButtonPressed>()) {
+                if (mbe->button == sf::Mouse::Button::Left) {
+                    const sf::Vector2f mPos = window.mapPixelToCoords(sf::Mouse::getPosition(window));
+                    if (restartButton.box.getGlobalBounds().contains(mPos)) {
+                        resetGameState();
+                        return;
+                    }
+                    if (menuButton.box.getGlobalBounds().contains(mPos)) {
+                        window.close();
+                        return;
+                    }
+                }
+            }
         }
     }
 }
@@ -466,12 +603,15 @@ void LabyrinthGame::processEvents() {
 //  UPDATE
 // =====================================================================
 void LabyrinthGame::update(float dt) {
-    if (gameWon || gameover) return;
+    updateTransition(dt);
+
+    if (activeEndScreen != EndScreen::None ||
+        transitionState == TransitionState::FadeOut) return;
 
     updateScreamer(dt);
 
-    const float rotationSpeed    = 1.8F;
-    const float baseMoveSpeed    = 3.0F;
+    const float rotationSpeed    = 2.8F;
+    const float baseMoveSpeed    = 2.45F;
     const float sprintMultiplier = 1.45F;
     const float flightMultiplier = 2.1F;
     const float sprintDrain      = 16.0F;
@@ -522,8 +662,8 @@ void LabyrinthGame::update(float dt) {
 
     // ===== Хитання камери =====
     if (isWalking) {
-        const float walkFreq = 11.0F + sprintVisualTimer * 5.0F + flightVisualTimer * 3.0F;
-        const float walkAmp  =  9.0F + sprintVisualTimer * 8.0F + flightVisualTimer * 9.0F;
+        const float walkFreq = 8.6F + sprintVisualTimer * 4.5F + flightVisualTimer * 2.5F;
+        const float walkAmp  = 12.5F + sprintVisualTimer * 9.0F + flightVisualTimer * 11.0F;
         walkWavePhase   += dt * walkFreq;
         cameraBobOffset  = std::sin(walkWavePhase) * walkAmp;
         handSwayPhase   += dt * walkFreq;
@@ -554,9 +694,15 @@ void LabyrinthGame::update(float dt) {
     updateEnemies(dt);
     checkWin();
 
-    if (hp <= 0.0F) {
-        gameover = true;
+    if (hp <= 0.0F && pendingEndScreen == EndScreen::None) {
+        pendingEndScreen = EndScreen::GameOver;
+        transitionState = TransitionState::FadeOut;
         if (footstepSound.has_value()) footstepSound->stop();
+    }
+    
+    if (gameWon && pendingEndScreen == EndScreen::None) {
+        pendingEndScreen = EndScreen::Victory;
+        transitionState = TransitionState::FadeOut;
     }
 }
 
@@ -1123,14 +1269,15 @@ void LabyrinthGame::drawHud() {
         sf::Text corner(font);
         corner.setCharacterSize(18); corner.setFillColor(sf::Color(220,220,230));
         corner.setPosition({panelX+16.F, panelY+10.F});
-        corner.setString("КЛЮЧІ: " + std::to_string(score) + "/3");
+        corner.setString("KLYUCHI: " + std::to_string(score) + "/3");
         window.draw(corner);
 
         sf::Text controls(font);
         controls.setCharacterSize(18); controls.setFillColor(sf::Color::White);
         controls.setPosition({10.F, (float)(screenHeight-52)});
-        controls.setString("W/S - рух, A/D - поворот, Shift - біг, Shift+Space - стрибок-політ, M - карта, ESC - вихід");
+        controls.setString("W/S - ruh, A/D - povorot, Shift - big, Shift+Space - strybok-polit, M - karta, ESC - vyhid");
         window.draw(controls);
+
     }
 
     const float colX = 22.F, colBot = (float)(screenHeight-24);
@@ -1174,25 +1321,68 @@ void LabyrinthGame::drawGameOver() {
     glow.setFillColor(sf::Color(80,0,0, (uint8_t)(60.F+pulse*60.F)));
     window.draw(glow);
 
-    if (!fontLoaded) return;
+    if (fontLoaded) {
+        sf::Text title(font, "VY PROHRALY", 90);
+        title.setStyle(sf::Text::Bold); title.setFillColor(sf::Color(200,20,20));
+        const auto tb = title.getLocalBounds();
+        title.setOrigin({tb.size.x/2.F, tb.size.y/2.F});
+        title.setPosition({sw/2.F, sh/2.F-60.F}); window.draw(title);
 
-    sf::Text title(font, "GAME OVER", 96);
-    title.setStyle(sf::Text::Bold); title.setFillColor(sf::Color(200,20,20));
-    const auto tb = title.getLocalBounds();
-    title.setOrigin({tb.size.x/2.F, tb.size.y/2.F});
-    title.setPosition({sw/2.F, sh/2.F-60.F}); window.draw(title);
+        sf::Text sub(font, "Sprobuyte she raz.", 30);
+        sub.setFillColor(sf::Color(160,160,160));
+        const auto sb = sub.getLocalBounds();
+        sub.setOrigin({sb.size.x/2.F, sb.size.y/2.F});
+        sub.setPosition({sw/2.F, sh/2.F+30.F}); window.draw(sub);
+    }
 
-    sf::Text sub(font, "Ти помер у темряві...", 32);
-    sub.setFillColor(sf::Color(160,160,160));
-    const auto sb = sub.getLocalBounds();
-    sub.setOrigin({sb.size.x/2.F, sb.size.y/2.F});
-    sub.setPosition({sw/2.F, sh/2.F+30.F}); window.draw(sub);
+    window.draw(restartButton.box);
+    window.draw(menuButton.box);
+    if (restartButton.label) window.draw(*restartButton.label);
+    if (menuButton.label) window.draw(*menuButton.label);
+}
 
-    sf::Text tip(font, "ESC — вийти", 24);
-    tip.setFillColor(sf::Color(100,100,110));
-    const auto tipb = tip.getLocalBounds();
-    tip.setOrigin({tipb.size.x/2.F, tipb.size.y/2.F});
-    tip.setPosition({sw/2.F, sh/2.F+90.F}); window.draw(tip);
+// =====================================================================
+//  ЕКРАН ПЕРЕМОГИ
+// =====================================================================
+void LabyrinthGame::drawVictoryScreen() {
+    sf::RectangleShape bg(sf::Vector2f((float)screenWidth, (float)screenHeight));
+    bg.setFillColor(sf::Color(8, 14, 28));
+    window.draw(bg);
+
+    const float t = portalClock.getElapsedTime().asSeconds();
+    const sf::Vector2f center{screenWidth / 2.F, screenHeight / 2.F - 70.F};
+    for (int i = 0; i < 7; ++i) {
+        const float radius = 40.F + i * 32.F + std::sin(t * 1.7F + i * 0.5F) * 8.F;
+        sf::CircleShape ring(radius);
+        ring.setOrigin(ring.getGeometricCenter());
+        ring.setPosition(center);
+        ring.setFillColor(sf::Color::Transparent);
+        ring.setOutlineThickness(3.F);
+        ring.setOutlineColor(sf::Color(90 + i * 14, 130 + i * 12, 240 - i * 14, 220));
+        window.draw(ring);
+    }
+
+    if (fontLoaded) {
+        sf::Text title(font, "TY PEREMIH", 78);
+        title.setStyle(sf::Text::Bold);
+        title.setFillColor(sf::Color::White);
+        const auto tb = title.getLocalBounds();
+        title.setOrigin({tb.size.x / 2.F, tb.size.y / 2.F});
+        title.setPosition({screenWidth / 2.F, screenHeight / 2.F + 30.F});
+        window.draw(title);
+    }
+
+    window.draw(restartButton.box);
+    window.draw(menuButton.box);
+    if (restartButton.label) window.draw(*restartButton.label);
+    if (menuButton.label) window.draw(*menuButton.label);
+}
+
+void LabyrinthGame::drawTransitionOverlay() {
+    if (transitionAlpha <= 0.0F) return;
+    sf::RectangleShape overlay(sf::Vector2f((float)screenWidth, (float)screenHeight));
+    overlay.setFillColor(sf::Color(0, 0, 0, static_cast<uint8_t>(std::clamp(transitionAlpha, 0.0F, 255.0F))));
+    window.draw(overlay);
 }
 
 // =====================================================================
@@ -1214,10 +1404,10 @@ void LabyrinthGame::drawPortalScreen() {
         window.draw(ring);
     }
     if (!fontLoaded) return;
-    sf::Text title(font, "СИСТЕМА ЗЛАМАННЯ. ВИ ВІЛЬНІ", 42);
+    sf::Text title(font, "SYSTEM BROKEN. YOU ARE FREE", 42);
     title.setStyle(sf::Text::Bold); title.setFillColor(sf::Color::White);
     title.setPosition({120.F, (float)screenHeight-170.F}); window.draw(title);
-    sf::Text tip(font, "Натисни ESC, щоб закрити гру", 26);
+    sf::Text tip(font, "Press ESC to close game", 26);
     tip.setFillColor(sf::Color(220,220,230));
     tip.setPosition({300.F, (float)screenHeight-115.F}); window.draw(tip);
 }
@@ -1228,10 +1418,10 @@ void LabyrinthGame::drawPortalScreen() {
 void LabyrinthGame::render() {
     window.clear(sf::Color(0,0,0));
 
-    if (gameover) {
+    if (activeEndScreen == EndScreen::GameOver) {
         drawGameOver();
-    } else if (gameWon) {
-        drawPortalScreen();
+    } else if (activeEndScreen == EndScreen::Victory) {
+        drawVictoryScreen();
     } else {
         const bool isWalking =
             sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W)  ||
@@ -1251,5 +1441,6 @@ void LabyrinthGame::render() {
         drawScreamer();
     }
 
+    drawTransitionOverlay();
     window.display();
 }
