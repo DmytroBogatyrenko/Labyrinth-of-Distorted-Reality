@@ -1,4 +1,4 @@
-#include "MenuScene.hpp"
+#include "Menuscene.hpp"
 #include "LabyrinthGame.hpp"
 
 int main() {
