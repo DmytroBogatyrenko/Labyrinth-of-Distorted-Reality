@@ -10,6 +10,7 @@ struct KeyInfo {
 
 struct EnemyInfo {
     sf::Vector2f position;
+    float hp = 100.0F;
     float speed = 1.6F;
     bool chasing = false;
     float attackCooldown = 0.0F;

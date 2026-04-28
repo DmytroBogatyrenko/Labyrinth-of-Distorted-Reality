@@ -307,17 +307,30 @@ void MenuScene::drawRulesPage() {
     if (!fontLoaded) return;
     const float cx = static_cast<float>(SW) / 2.0F;
 
-    sf::Text title(font, "PRAVYLA TA SYUZHET", 35);
-    title.setFillColor(sf::Color(200, 200, 200));
-    centerText(title, cx, 60.f);
-    window.draw(title);
-
-    // Тут зазвичай йде блок тексту правил... (скорочено для читабельності)
-    sf::Text rules(font, "Zbery 3 klyuchi ta znaydy vykhid.\nUnikay temryavy.", 20);
-    rules.setFillColor(sf::Color(170, 170, 170));
-    centerText(rules, cx, 300.f);
+   sf::Text rules(font,
+        "META GRY:\n"
+        " - Zbery 3 klyuchi, vidkryy dveri ta diydy do vykhodu.\n"
+        " - NPC mayut 100 HP (prykhovano), mozhna byt yikh lyshe z nozem.\n\n"
+        "PREDMETY:\n"
+        " - Na pochatku poruch lezhyt likhtaryk. Natysny E, shchob pidibraty.\n"
+        " - Dalishi na mapi ye nizh. Pislya pidboru obokh predmetiv aktyvna ataka.\n"
+        " - Likhtaryk inodi migotyt: tse chastyna atmosfery.\n\n"
+        "KERUVANNYA:\n"
+        " - W/S abo Up/Down: ruh vpered / nazad\n"
+        " - A/D abo Left/Right: povorot\n"
+        " - Shift: bih\n"
+        " - Shift + Space: strybok/polit (vysokyy burst ruhu)\n"
+        " - E: vzaemodiya z predmetamy\n"
+        " - LKM: ataka (pratsyuye lyshe z likhtarykom + nozem)\n"
+        " - M: povna mapa\n"
+        " - ESC: vyhid / nazad iz pravil",
+        18);
+    rules.setFillColor(sf::Color(178, 178, 186));
+    sf::FloatRect bounds = rules.getLocalBounds();
+    rules.setOrigin({bounds.size.x / 2.0f, 0.f}); // Центруємо точку прив'язки по горизонталі
+    rules.setPosition({cx, 120.F});
+    
     window.draw(rules);
-
     drawButton(btnBack);
 }
 

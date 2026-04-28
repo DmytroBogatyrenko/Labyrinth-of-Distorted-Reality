@@ -30,6 +30,7 @@ LabyrinthGame::LabyrinthGame()
 
     // 1. Будуємо світ
     buildLargeMap();
+    placeStartingItems();
     placeKeysRandomly();
     spawnEnemiesRandomly();
 
@@ -51,18 +52,11 @@ LabyrinthGame::LabyrinthGame()
     }
     if (!fontLoaded) std::cerr << "[Попередження] Не знайдено шрифт для кнопок/тексту.\n";
 
-    // 3. ЗАВАНТАЖЕННЯ РУК (Тільки один раз!)
-    // Використовуємо саме "clean" версію, яку ми робили
-    if (handsTexture.loadFromFile("assets/hands_clean.png")) {
-        handsTexture.setSmooth(true);
-        handsLoaded = true;
-        // Встановлюємо спрайт по центру знизу екрана
-        handsSprite.setOrigin({ (float)handsTexture.getSize().x / 2.f, (float)handsTexture.getSize().y });
-        handsSprite.setPosition({ (float)screenWidth / 2.f, (float)screenHeight });
-        std::cerr << "[INFO] Hands loaded (clean version).\n";
-    } else {
-        std::cerr << "[ERROR] Не знайдено assets/hands_clean.png!\n";
-    }
+    // 3. ЗАВАНТАЖЕННЯ РУК (динамічна зміна залежно від предметів)
+    refreshHandsTexture();
+    flashlightBeamStrength = 0.0F;
+    flashlightStableTimer = 1.4F;
+    flashlightBlinkTimer = 0.0F;
 
     // 4. ЗАВАНТАЖЕННЯ СКРІМЕРА
     if (screamerTexture.loadFromFile("assets/screamer.png")) {
@@ -124,6 +118,7 @@ void LabyrinthGame::initEndButtons() {
 
 void LabyrinthGame::resetGameState() {
     buildLargeMap();
+    placeStartingItems();
     placeKeysRandomly();
     spawnEnemiesRandomly();
 
@@ -155,6 +150,13 @@ void LabyrinthGame::resetGameState() {
     darknessFlicker = 0.0F;
     flickerPhase = 0.0F;
     ambientDarknessAlpha = 0.0F;
+    pickupTransitionTimer = 0.0F;
+    interactionPressed = false;
+    attackPressed = false;
+    hasFlashlight = false;
+    hasKnife = false;
+
+    refreshHandsTexture();
 
     screamerActive = false;
     screamerShowTimer = 0.0F;
@@ -209,6 +211,23 @@ void LabyrinthGame::loadSounds() {
         pickupSound->setVolume(80.f);
     } else {
         std::cerr << "[Звук] Не знайдено assets/sounds/pickup.wav\n";
+    }
+}
+void LabyrinthGame::loadItemTextures() {
+    if (flashlightItemTexture.loadFromFile("assets/flashlight_item.png") ||
+        flashlightItemTexture.loadFromFile("assets/flashlight_item.bmp")) {
+        flashlightItemTexture.setSmooth(true);
+        flashlightItemLoaded = true;
+    } else {
+        std::cerr << "[INFO] Не знайдено flashlight_item (png/bmp), буде fallback.\n";
+    }
+
+    if (knifeItemTexture.loadFromFile("assets/knife_item.png") ||
+        knifeItemTexture.loadFromFile("assets/knife_item.bmp")) {
+        knifeItemTexture.setSmooth(true);
+        knifeItemLoaded = true;
+    } else {
+        std::cerr << "[INFO] Не знайдено knife_item (png/bmp), буде fallback.\n";
     }
 }
 
@@ -578,7 +597,13 @@ void LabyrinthGame::processEvents() {
         if (event->is<sf::Event::Closed>()) { window.close(); return; }
         if (const auto* kp = event->getIf<sf::Event::KeyPressed>()) {
             if (kp->code == sf::Keyboard::Key::Escape) window.close();
-                        if (kp->code == sf::Keyboard::Key::M && activeEndScreen == EndScreen::None) showFullMap = !showFullMap;
+            if (kp->code == sf::Keyboard::Key::M && activeEndScreen == EndScreen::None) showFullMap = !showFullMap;
+            if (kp->code == sf::Keyboard::Key::E && activeEndScreen == EndScreen::None) interactionPressed = true;
+        }
+        if (const auto* mbe = event->getIf<sf::Event::MouseButtonPressed>()) {
+            if (mbe->button == sf::Mouse::Button::Left && activeEndScreen == EndScreen::None) {
+                attackPressed = true;
+            }
         }
 
         if (activeEndScreen != EndScreen::None && transitionState == TransitionState::Idle) {
@@ -609,6 +634,36 @@ void LabyrinthGame::update(float dt) {
         transitionState == TransitionState::FadeOut) return;
 
     updateScreamer(dt);
+    handleInteraction();
+    handleCombat();
+
+    if (hasFlashlight) {
+        static thread_local std::mt19937 rng(std::random_device{}());
+        flashlightStableTimer -= dt;
+        if (flashlightBlinkTimer > 0.0F) {
+            flashlightBlinkTimer = std::max(0.0F, flashlightBlinkTimer - dt);
+        } else if (flashlightStableTimer <= 0.0F) {
+            std::uniform_real_distribution<float> blinkDur(0.04F, 0.16F);
+            std::uniform_real_distribution<float> nextStable(1.1F, 3.2F);
+            flashlightBlinkTimer = blinkDur(rng);
+            flashlightStableTimer = nextStable(rng);
+        }
+
+        const float flickerWave = std::sin(flickerPhase * 21.0F) * 0.22F
+                                + std::sin(flickerPhase * 33.0F) * 0.12F;
+        const float blinkCut = (flashlightBlinkTimer > 0.0F) ? 0.08F : 1.0F;
+        flashlightBeamStrength = std::clamp((0.92F + flickerWave) * blinkCut, 0.0F, 1.0F);
+    } else {
+        flashlightBeamStrength = 0.0F;
+        flashlightStableTimer = 0.7F;
+        flashlightBlinkTimer = 0.0F;
+    }
+
+    if (pickupTransitionTimer > 0.0F) {
+        pickupTransitionTimer = std::max(0.0F, pickupTransitionTimer - dt);
+        updateEnemies(dt * 0.2F);
+        return;
+    }
 
     const float rotationSpeed    = 2.8F;
     const float baseMoveSpeed    = 2.45F;
@@ -685,8 +740,10 @@ void LabyrinthGame::update(float dt) {
 
     flickerPhase        += dt * 2.3F;
     darknessFlicker      = std::sin(flickerPhase) * 6.0F + std::sin(flickerPhase * 3.7F) * 4.0F;
-    ambientDarknessAlpha = std::clamp(
-        (1.0F - hp / 100.0F) * 110.0F + darknessFlicker, 0.0F, 160.0F);
+    const float healthPenalty = (1.0F - hp / 100.0F) * 60.0F;
+    const float baseDarkness = hasFlashlight ? 125.0F : 220.0F;
+    ambientDarknessAlpha = std::clamp(baseDarkness + healthPenalty + darknessFlicker,
+                                      60.0F, 245.0F);
 
     revealNearbyKeys();
     collectAtPlayerCell();
@@ -737,7 +794,7 @@ bool LabyrinthGame::hasLineOfSight(const sf::Vector2f& from, const sf::Vector2f&
 bool LabyrinthGame::isWalkableEnemyCell(int x, int y) const {
     if (!isInsideMap(x, y)) return false;
     const char t = tileAt(x, y);
-    return t == '.' || t == 'E' || (t >= '1' && t <= '3');
+    return t == '.' || t == 'E' || t == 'F' || t == 'K' || (t >= '1' && t <= '3');
 }
 
 void LabyrinthGame::moveEnemyToward(EnemyInfo& enemy, const sf::Vector2f& target,
@@ -762,6 +819,112 @@ sf::Vector2f LabyrinthGame::chooseEnemyWanderTarget(const sf::Vector2f& origin) 
     }
     return origin;
 }
+
+// =====================================================================
+//  ПРЕДМЕТИ / ВЗАЄМОДІЯ / БІЙ
+// =====================================================================
+void LabyrinthGame::placeStartingItems() {
+    const int flashlightX = 2;
+    const int flashlightY = 1;
+    const int knifeX = 4;
+    const int knifeY = 2;
+
+    if (!hasFlashlight && isInsideMap(flashlightX, flashlightY)) {
+        map[flashlightY][flashlightX] = 'F';
+    }
+    if (!hasKnife && isInsideMap(knifeX, knifeY)) {
+        map[knifeY][knifeX] = 'K';
+    }
+}
+
+bool LabyrinthGame::tryLoadHandsTexture(const std::vector<std::string>& candidates) {
+    for (const auto& path : candidates) {
+        if (!std::filesystem::exists(path)) continue;
+        if (!handsTexture.loadFromFile(path)) continue;
+        handsTexture.setSmooth(true);
+        handsLoaded = true;
+        handsSprite.setOrigin({ static_cast<float>(handsTexture.getSize().x) / 2.F,
+                                static_cast<float>(handsTexture.getSize().y) });
+        handsSprite.setPosition({ static_cast<float>(screenWidth) / 2.F,
+                                  static_cast<float>(screenHeight) });
+        std::cerr << "[INFO] Hands loaded: " << path << "\n";
+        return true;
+    }
+    return false;
+}
+
+void LabyrinthGame::refreshHandsTexture() {
+    bool loaded = false;
+    if (hasFlashlight && hasKnife) {
+        loaded = tryLoadHandsTexture({"assets/hands_flashlight_knife.png", "assets/hands__.png"});
+    } else if (hasFlashlight) {
+        loaded = tryLoadHandsTexture({"assets/hands_flashlight.png", "assets/hands.png"});
+    } else if (hasKnife) {
+        loaded = tryLoadHandsTexture({"assets/hands_knife.png"});
+    } else {
+        loaded = tryLoadHandsTexture({"assets/hands_clean.png"});
+    }
+
+    if (!loaded) {
+        handsLoaded = false;
+        std::cerr << "[WARNING] Не знайдено підходяще зображення рук.\n";
+    }
+}
+
+void LabyrinthGame::handleInteraction() {
+    if (!interactionPressed) return;
+    interactionPressed = false;
+
+    bool pickedAny = false;
+    for (int oy = -1; oy <= 1; ++oy) {
+        for (int ox = -1; ox <= 1; ++ox) {
+            const int tx = static_cast<int>(player.x) + ox;
+            const int ty = static_cast<int>(player.y) + oy;
+            if (!isInsideMap(tx, ty)) continue;
+            char& tile = map[ty][tx];
+            if (tile == 'F' && !hasFlashlight) {
+                hasFlashlight = true;
+                tile = '.';
+                pickedAny = true;
+            } else if (tile == 'K' && !hasKnife) {
+                hasKnife = true;
+                tile = '.';
+                pickedAny = true;
+            }
+        }
+    }
+
+    if (pickedAny) {
+        pickupTransitionTimer = 0.22F;
+        refreshHandsTexture();
+        if (pickupSound.has_value()) pickupSound->play();
+    }
+}
+
+void LabyrinthGame::handleCombat() {
+    if (!attackPressed) return;
+    attackPressed = false;
+    if (!(hasFlashlight && hasKnife)) return;
+
+    for (auto& enemy : enemies) {
+        const sf::Vector2f toEnemy = enemy.position - player;
+        const float dist = std::sqrt(toEnemy.x * toEnemy.x + toEnemy.y * toEnemy.y);
+        if (dist > 1.8F) continue;
+
+        float angleDiff = std::atan2(toEnemy.y, toEnemy.x) - playerAngle;
+        while (angleDiff >  3.14159F) angleDiff -= 6.28318F;
+        while (angleDiff < -3.14159F) angleDiff += 6.28318F;
+        if (std::abs(angleDiff) > 0.65F) continue;
+        if (!hasLineOfSight(player, enemy.position, 0.08F)) continue;
+
+        enemy.hp = std::max(0.0F, enemy.hp - 20.0F);
+    }
+
+    enemies.erase(std::remove_if(enemies.begin(), enemies.end(),
+        [](const EnemyInfo& enemy) { return enemy.hp <= 0.0F; }),
+        enemies.end());
+}
+
 
 // =====================================================================
 //  ВОРОГИ
@@ -882,12 +1045,12 @@ void LabyrinthGame::checkWin() {
 // =====================================================================
 sf::Color LabyrinthGame::makeSimpleWallColor(float dist, char hitTile) const {
     if (hitTile == 'D') {
-        const int rust = std::max(25, 120 - (int)(dist * 8.F));
+        const int rust = std::max(10, 58 - (int)(dist * 5.F));
         return sf::Color(rust, rust/2, rust/3);
     }
     const float light = std::clamp(1.0F - (dist / maxDepth), 0.0F, 1.0F);
-    const int tone = (int)(light * 3.0F);
-    return sf::Color(14 + tone*13, 16 + tone*13, 20 + tone*15);
+    const int tone = (int)(light * 2.6F);
+    return sf::Color(4 + tone*8, 5 + tone*9, 7 + tone*10);
 }
 
 // =====================================================================
@@ -938,7 +1101,21 @@ void LabyrinthGame::drawFirstPersonWorld() {
         strip.setPosition(sf::Vector2f(static_cast<float>(x) + screenShakeX,
                                        static_cast<float>(ceiling)));
         strip.setSize(sf::Vector2f(1.F, static_cast<float>(std::max(0, floor-ceiling))));
-        strip.setFillColor(makeSimpleWallColor(distanceToWall, hitTile));
+        sf::Color wallColor = makeSimpleWallColor(distanceToWall, hitTile);
+        if (hasFlashlight && flashlightBeamStrength > 0.01F) {
+            float rayDiff = rayAngle - playerAngle;
+            while (rayDiff >  3.14159F) rayDiff -= 6.28318F;
+            while (rayDiff < -3.14159F) rayDiff += 6.28318F;
+            const float angleNorm = std::abs(rayDiff) / (dynamicFov * 0.33F);
+            const float cone = std::clamp(1.0F - angleNorm, 0.0F, 1.0F);
+            const float distBoost = std::clamp(1.0F - corrDist / 11.5F, 0.0F, 1.0F);
+            const float lightBoost = cone * distBoost * flashlightBeamStrength;
+            const int add = static_cast<int>(160.0F * lightBoost);
+            wallColor.r = static_cast<uint8_t>(std::min(255, wallColor.r + add));
+            wallColor.g = static_cast<uint8_t>(std::min(255, wallColor.g + add));
+            wallColor.b = static_cast<uint8_t>(std::min(255, wallColor.b + add));
+        }
+        strip.setFillColor(wallColor);
         window.draw(strip);
     }
 
@@ -1007,6 +1184,74 @@ void LabyrinthGame::drawFirstPersonWorld() {
         armR.setPosition(sf::Vector2f(screenX+bodyWidth*0.40F+screenShakeX, baseY-bodyHeight*0.04F+walkSwing));
         armR.setRotation(sf::degrees(25.0F-std::sin(enemy.animPhase)*35.0F));
         armR.setFillColor(sf::Color(10,10,10)); window.draw(armR);
+    }
+   // Предмети (ліхтарик і ніж)
+    for (int y = 0; y < mapHeight; ++y) {
+        for (int x = 0; x < mapWidth; ++x) {
+            const char tile = map[y][x];
+            if (tile != 'F' && tile != 'K') continue;
+
+            const sf::Vector2f itemPos{static_cast<float>(x) + 0.5F, static_cast<float>(y) + 0.5F};
+            const sf::Vector2f toItem = itemPos - player;
+            const float dist = std::sqrt(toItem.x * toItem.x + toItem.y * toItem.y);
+            if (dist < 0.1F || dist >= maxDepth) continue;
+            if (!hasLineOfSight(player, itemPos, 0.05F)) continue;
+
+            float angleToItem = std::atan2(toItem.y, toItem.x) - playerAngle;
+            while (angleToItem >  3.14159F) angleToItem -= 6.28318F;
+            while (angleToItem < -3.14159F) angleToItem += 6.28318F;
+            if (std::abs(angleToItem) > dynamicFov * 0.60F) continue;
+
+            const float screenX = ((angleToItem + dynamicFov / 2.0F) / dynamicFov)
+                                  * static_cast<float>(screenWidth);
+            const int columnX = static_cast<int>(screenX);
+            if (columnX < 0 || columnX >= static_cast<int>(screenWidth)) continue;
+            if (dist > wallDistances[columnX]) continue;
+
+            const float spriteHeight = std::max(12.0F, (static_cast<float>(screenHeight) / dist) * 0.28F);
+            const float screenY = horizonY + spriteHeight * 0.82F;
+            const sf::Color tint = sf::Color(255, 255, 255, 245);
+
+            // Базова коробочка під предмет (щоб PNG накладався зверху по запиту)
+            const float boxSize = std::max(6.0F, (static_cast<float>(screenHeight) / dist) * 0.18F);
+            sf::RectangleShape itemRect(sf::Vector2f(boxSize, boxSize * (tile == 'F' ? 1.8F : 0.5F)));
+            itemRect.setOrigin(itemRect.getGeometricCenter());
+            itemRect.setPosition(sf::Vector2f(screenX + screenShakeX, horizonY + boxSize * 0.95F));
+            itemRect.setFillColor(tile == 'F'
+                ? sf::Color(245, 240, 170, 190)
+                : sf::Color(210, 210, 220, 190));
+            window.draw(itemRect);
+
+            if (tile == 'F' && flashlightItemLoaded) {
+                sf::Sprite item(flashlightItemTexture);
+                const sf::Vector2u ts = flashlightItemTexture.getSize();
+                if (ts.x > 0 && ts.y > 0) {
+                    const float scale = spriteHeight / static_cast<float>(ts.y);
+                    item.setOrigin(sf::Vector2f(ts.x / 2.F, ts.y / 2.F));
+                    item.setPosition(sf::Vector2f(screenX + screenShakeX, screenY));
+                    item.setScale(sf::Vector2f(scale, scale));
+                    item.setColor(tint);
+                    window.draw(item);
+                    continue;
+                }
+            }
+
+            if (tile == 'K' && knifeItemLoaded) {
+                sf::Sprite item(knifeItemTexture);
+                const sf::Vector2u ts = knifeItemTexture.getSize();
+                if (ts.x > 0 && ts.y > 0) {
+                    const float scale = spriteHeight / static_cast<float>(ts.y);
+                    item.setOrigin(sf::Vector2f(ts.x / 2.F, ts.y / 2.F));
+                    item.setPosition(sf::Vector2f(screenX + screenShakeX, screenY));
+                    item.setScale(sf::Vector2f(scale, scale));
+                    item.setColor(tint);
+                    window.draw(item);
+                    continue;
+                }
+            }
+
+            // якщо текстура не завантажилась — залишаємо тільки коробочку
+        }
     }
 }
 
@@ -1099,7 +1344,7 @@ void LabyrinthGame::drawVignette() {
         vignette[i+1].position = sf::Vector2f(
             center.x + std::cos(angle) * sw * 0.72F,
             center.y + std::sin(angle) * sh * 0.72F);
-        vignette[i+1].color = sf::Color(0, 0, 0, 210);
+        vignette[i+1].color = sf::Color(0, 0, 0, 232);
     }
     window.draw(vignette);
 
@@ -1108,24 +1353,54 @@ void LabyrinthGame::drawVignette() {
         dim.setFillColor(sf::Color(0, 0, 0,
             static_cast<uint8_t>(ambientDarknessAlpha)));
         window.draw(dim);
+    if (hasFlashlight) {
+        constexpr int beamSegments = 56;
+        sf::VertexArray beam(sf::PrimitiveType::TriangleFan, beamSegments + 2);
+        const sf::Vector2f beamCenter(sw / 2.F, sh * 0.60F);
+        const uint8_t beamCenterAlpha = static_cast<uint8_t>(
+            std::clamp(52.0F - flashlightBeamStrength * 40.0F, 8.0F, 70.0F));
+        const uint8_t beamEdgeAlpha = static_cast<uint8_t>(
+            std::clamp(248.0F - flashlightBeamStrength * 55.0F, 165.0F, 252.0F));
+        beam[0].position = beamCenter;
+        beam[0].color = sf::Color(0, 0, 0, beamCenterAlpha);
+        for (int i = 0; i <= beamSegments; ++i) {
+            const float a = -0.95F + (1.90F * static_cast<float>(i) / beamSegments);
+            const float rx = std::sin(a) * sw * 0.58F;
+            const float ry = std::cos(a) * sh * 0.72F;
+            beam[i + 1].position = {beamCenter.x + rx, beamCenter.y - ry};
+            beam[i + 1].color = sf::Color(0, 0, 0, beamEdgeAlpha);
+        }
+        window.draw(beam);
+    }
     }
 
-    if (hp < 40.0F) {
+       if (hasFlashlight) {
+        constexpr int beamSegments = 56;
+        sf::VertexArray beam(sf::PrimitiveType::TriangleFan, beamSegments + 2);
+        const sf::Vector2f beamCenter(sw / 2.F, sh * 0.60F);
+        const uint8_t beamCenterAlpha = static_cast<uint8_t>(
+            std::clamp(52.0F - flashlightBeamStrength * 40.0F, 8.0F, 70.0F));
+        const uint8_t beamEdgeAlpha = static_cast<uint8_t>(
+            std::clamp(248.0F - flashlightBeamStrength * 55.0F, 165.0F, 252.0F));
+        beam[0].position = beamCenter;
+        beam[0].color = sf::Color(0, 0, 0, beamCenterAlpha);
+        for (int i = 0; i <= beamSegments; ++i) {
+            const float a = -0.95F + (1.90F * static_cast<float>(i) / beamSegments);
+            const float rx = std::sin(a) * sw * 0.58F;
+            const float ry = std::cos(a) * sh * 0.72F;
+            beam[i + 1].position = {beamCenter.x + rx, beamCenter.y - ry};
+            beam[i + 1].color = sf::Color(0, 0, 0, beamEdgeAlpha);
+        }
+        window.draw(beam);
+    }
+
+    if (hp < 55.0F) {
         const float pulse = std::abs(std::sin(flickerPhase * 2.5F));
         const uint8_t redAlpha = static_cast<uint8_t>(
-            std::clamp((40.0F-hp)/40.0F * 180.0F * pulse, 0.0F, 200.0F));
-        sf::VertexArray redVig(sf::PrimitiveType::TriangleFan, segments + 2);
-        redVig[0].position = center;
-        redVig[0].color    = sf::Color(0, 0, 0, 0);
-        for (int i = 0; i <= segments; ++i) {
-            const float angle = static_cast<float>(i) / static_cast<float>(segments)
-                                * 2.0F * 3.14159265F;
-            redVig[i+1].position = sf::Vector2f(
-                center.x + std::cos(angle) * sw * 0.55F,
-                center.y + std::sin(angle) * sh * 0.55F);
-            redVig[i+1].color = sf::Color(180, 0, 0, redAlpha);
-        }
-        window.draw(redVig);
+            std::clamp((55.0F - hp) / 55.0F * (90.0F + pulse * 120.0F), 0.0F, 220.0F));
+        sf::RectangleShape damageFx(sf::Vector2f(sw, sh));
+        damageFx.setFillColor(sf::Color(170, 0, 0, redAlpha));
+        window.draw(damageFx);
     }
 }
 
@@ -1161,6 +1436,8 @@ void LabyrinthGame::drawMiniMap() {
             }
             if      (t == '#') tile.setFillColor(sf::Color(42,42,48));
             else if (t == 'D') tile.setFillColor(sf::Color(120,70,30));
+            else if (t == 'F') tile.setFillColor(sf::Color(235, 235, 160));
+            else if (t == 'K') tile.setFillColor(sf::Color(200, 200, 220));
             else if (t >= '1' && t <= '3') tile.setFillColor(sf::Color::Yellow);
             else if (t == 'E') tile.setFillColor(sf::Color(155,70,220));
             else               tile.setFillColor(sf::Color(180,180,180));
@@ -1209,6 +1486,8 @@ void LabyrinthGame::drawFullMapOverlay() {
             const char t = map[y][x];
             if      (t == '#') tile.setFillColor(sf::Color(34,34,40));
             else if (t == 'D') tile.setFillColor(sf::Color(120,70,30));
+            else if (t == 'F') tile.setFillColor(sf::Color(235, 235, 160));
+            else if (t == 'K') tile.setFillColor(sf::Color(200, 200, 220));
             else if (t == 'E') tile.setFillColor(sf::Color(155,70,220));
             else               tile.setFillColor(sf::Color(165,165,170));
             tile.setPosition(sf::Vector2f(sx+x*ts, sy+y*ts));
@@ -1265,30 +1544,15 @@ void LabyrinthGame::drawHud() {
         window.draw(orb);
     }
 
-    if (fontLoaded) {
-        sf::Text corner(font);
-        corner.setCharacterSize(18); corner.setFillColor(sf::Color(220,220,230));
-        corner.setPosition({panelX+16.F, panelY+10.F});
-        corner.setString("KLYUCHI: " + std::to_string(score) + "/3");
-        window.draw(corner);
-
-        sf::Text controls(font);
-        controls.setCharacterSize(18); controls.setFillColor(sf::Color::White);
-        controls.setPosition({10.F, (float)(screenHeight-52)});
-        controls.setString("W/S - ruh, A/D - povorot, Shift - big, Shift+Space - strybok-polit, M - karta, ESC - vyhid");
-        window.draw(controls);
-
-    }
-
     const float colX = 22.F, colBot = (float)(screenHeight-24);
     const float barW = 20.F, barH = 160.F, gap = 14.F;
     const auto drawBar = [&](float x, float ratio, sf::Color fill) {
         sf::RectangleShape frame(sf::Vector2f(barW, barH));
         frame.setPosition({x, colBot-barH});
         frame.setFillColor(sf::Color(16,16,20,220));
-        frame.setOutlineThickness(2.F); frame.setOutlineColor(sf::Color(210,210,220));
+        frame.setOutlineThickness(10.F); frame.setOutlineColor(sf::Color(210,210,220));
         window.draw(frame);
-        const float vh = (barH-4.F)*std::clamp(ratio,0.F,1.F);
+        const float vh = (barH-1.F)*std::clamp(ratio,0.F,1.F);
         sf::RectangleShape fr(sf::Vector2f(barW-4.F, vh));
         fr.setPosition({x+2.F, colBot-2.F-vh}); fr.setFillColor(fill);
         window.draw(fr);
@@ -1296,14 +1560,7 @@ void LabyrinthGame::drawHud() {
     drawBar(colX,          hp/100.F,      sf::Color(220,40,40));
     drawBar(colX+barW+gap, stamina/100.F, sf::Color(45,120,255));
 
-    if (fontLoaded) {
-        sf::Text hpM(font, "+", 34);
-        hpM.setFillColor(sf::Color(245,50,50));
-        hpM.setPosition({colX+2.F, colBot+4.F}); window.draw(hpM);
-        sf::Text stM(font, "S", 22);
-        stM.setFillColor(sf::Color(90,150,255));
-        stM.setPosition({colX+barW+gap+3.F, colBot+10.F}); window.draw(stM);
-    }
+    (void)fontLoaded;
 }
 
 // =====================================================================
@@ -1438,6 +1695,13 @@ void LabyrinthGame::render() {
         drawMiniMap();
         drawHud();
         if (showFullMap) drawFullMapOverlay();
+                if (pickupTransitionTimer > 0.0F) {
+            const uint8_t a = static_cast<uint8_t>(std::clamp(
+                (pickupTransitionTimer / 0.22F) * 255.0F, 0.0F, 255.0F));
+            sf::RectangleShape blink(sf::Vector2f((float)screenWidth, (float)screenHeight));
+            blink.setFillColor(sf::Color(0, 0, 0, a));
+            window.draw(blink);
+        }
         drawScreamer();
     }
 

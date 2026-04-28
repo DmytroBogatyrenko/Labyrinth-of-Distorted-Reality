@@ -62,6 +62,10 @@ private:
     sf::Texture screamerTexture;
     sf::Sprite  screamerSprite;
     bool        screamerLoaded = false;
+    sf::Texture flashlightItemTexture;
+    sf::Texture knifeItemTexture;
+    bool        flashlightItemLoaded = false;
+    bool        knifeItemLoaded = false;
 
     // ===== [Стан проходження] =====
     int  score       = 0;
@@ -91,6 +95,14 @@ private:
     float darknessFlicker      = 0.0F;
     float flickerPhase         = 0.0F;
     float ambientDarknessAlpha = 0.0F;
+    float pickupTransitionTimer = 0.0F;
+    bool interactionPressed = false;
+    bool attackPressed = false;
+    bool hasFlashlight = false;
+    bool hasKnife = false;
+    float flashlightBeamStrength = 0.0F;
+    float flashlightStableTimer = 0.0F;
+    float flashlightBlinkTimer = 0.0F;
 
     // ===== [Вороги] =====
     bool enemySpriteAssetsLoaded = false;
@@ -123,6 +135,7 @@ private:
     void render();
 
     void loadSounds();
+    void loadItemTextures();
     void updateFootsteps(float dt, bool isWalking, bool isSprinting);
     void resetScreamerTimer();
     void updateScreamer(float dt);
@@ -145,6 +158,11 @@ private:
     void movePlayer(const sf::Vector2f& dir, float distanceStep);
     void revealNearbyKeys();
     void collectAtPlayerCell();
+    void placeStartingItems();
+    void handleInteraction();
+    void handleCombat();
+    bool tryLoadHandsTexture(const std::vector<std::string>& candidates);
+    void refreshHandsTexture();
     void unlockDoorAndSpawnExit();
     void checkWin();
     void initEndButtons();
