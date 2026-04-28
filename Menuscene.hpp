@@ -51,6 +51,7 @@ private:
     sf::SoundBuffer          clickBuf;
     std::optional<sf::Sound> hoverSound;
     std::optional<sf::Sound> clickSound;
+    std::optional<sf::Music> menuMusic;
 
     struct Particle {
         sf::Vector2f pos, vel;

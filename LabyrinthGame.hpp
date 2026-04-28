@@ -128,6 +128,11 @@ private:
 
     sf::SoundBuffer          pickupSoundBuffer;
     std::optional<sf::Sound> pickupSound;
+    sf::SoundBuffer          attackSoundBuffer;
+    std::optional<sf::Sound> attackSound;
+    sf::SoundBuffer          enemyDeathSoundBuffer;
+    std::optional<sf::Sound> enemyDeathSound;
+    std::optional<sf::Music> gameMusic;
 
     // ===== [Приватні методи логіки] =====
     void processEvents();

@@ -73,6 +73,23 @@ void MenuScene::loadSounds() {
         clickSound.emplace(clickBuf);
         clickSound->setVolume(80.f);
     }
+        constexpr std::array<const char*, 4> menuMusicCandidates = {
+        "assets/sounds/menu_music.ogg",
+        "assets/sounds/menu_music.mp3",
+        "assets/music/menu_music.ogg",
+        "assets/music/menu_music.mp3"
+    };
+    for (const char* path : menuMusicCandidates) {
+        if (!std::filesystem::exists(path)) continue;
+        menuMusic.emplace();
+        if (menuMusic->openFromFile(path)) {
+            menuMusic->setLooping(true);
+            menuMusic->setVolume(35.f);
+            menuMusic->play();
+            break;
+        }
+        menuMusic.reset();
+    }
 }
 
 // =====================================================================

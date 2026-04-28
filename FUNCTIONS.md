@@ -1,0 +1,65 @@
+# labyrinthgame
+- `labyrinthgame()` — створення вікна, завантаження ресурсів, стартовий стан гри.
+- `run()` — головний цикл гри.
+- `processevents()` — обробка клавіш, миші та закриття вікна.
+- `update(float dt)` — оновлення ігрової логіки за кадр.
+- `render()` — відмальовування всього кадру.
+- `loadsounds()` — завантаження звуків і музики гри.
+- `loaditemtextures()` — завантаження текстур предметів (ліхтарик, ніж).
+- `updatefootsteps(...)` — кроки гравця під час руху.
+- `resetscreamertimer()` — перезапуск таймера скрімера.
+- `updatescreamer(float dt)` — випадковий показ скрімера.
+- `updatetransition(float dt)` — fade in/out переходів.
+- `buildlargemap()` — генерація великої карти.
+- `placekeysrandomly()` — випадкове розміщення ключів.
+- `spawnenemiesrandomly()` — випадковий спавн ворогів.
+- `loadenemyspriteassets()` — завантаження кадрів анімацій ворога.
+- `moveplayer(...)` — рух гравця з перевіркою колізій.
+- `revealnearbykeys()` — підсвічення/відкриття ключів поруч.
+- `collectatplayercell()` — збір об’єктів у клітинці гравця.
+- `placestartingitems()` — стартове розташування ліхтарика/ножа.
+- `handleinteraction()` — підбір предметів по клавіші взаємодії.
+- `handlecombat()` — удар гравця по ворогах.
+- `refreshhandstexture()` — вибір текстури рук за екіпіровкою.
+- `unlockdoorandspawnexit()` — відкриття дверей і поява виходу.
+- `checkwin()` — перевірка умови перемоги.
+- `resetgamestate()` — повний рестарт поточної сесії.
+- `updateenemies(float dt)` — логіка поведінки ворогів.
+- `drawfirstpersonworld()` — рендер світу від першої особи.
+- `drawplayerhands(...)` — рендер рук гравця.
+- `drawvignette()` — затемнення країв екрану.
+- `drawminimap()` — мінікарта.
+- `drawfullmapoverlay()` — повна карта поверх екрана.
+- `drawhud()` — hp, stamina та індикатори.
+- `drawportalscreen()` — фінальний портал-екран.
+- `drawgameover()` — екран поразки.
+- `drawvictoryscreen()` — екран перемоги.
+- `drawtransitionoverlay()` — затемнення переходів.
+- `drawscreamer()` — відмальовка скрімера.
+
+## menuscene
+- `menuscene(...)` — ініціалізація меню.
+- `run()` — цикл меню.
+- `loadassets()` — завантаження шрифту й ресурсів меню.
+- `loadsounds()` — завантаження звуків кнопок і музики меню.
+- `initbuttons()` — створення кнопок меню.
+- `initparticles()` — декоративні частинки фону.
+- `processevents(...)` — кліки/escape у меню.
+- `update(...)` — оновлення анімацій та fade.
+- `render()` — рендер поточної сторінки меню.
+- `drawbackground()` — фон меню.
+- `drawparticles()` — частинки меню.
+- `drawmainpage()` — головна сторінка меню.
+- `drawrulespage()` — сторінка правил.
+- `drawfadeoverlay()` — затемнення під час переходів.
+- `updatebutton(...)` — стан hover для кнопки.
+- `drawbutton(...)` — відмальовка кнопки.
+- `centertext(...)` — центрування тексту.
+
+## дані (змінні стану)
+- `hp` — здоров’я гравця.
+- `stamina` — витривалість для бігу/ривка.
+- `hasflashlight` — чи взятий ліхтарик.
+- `hasknife` — чи взятий ніж.
+- `score` — прогрес ключів/очок.
+- `gamewon` / `gameover` — завершення гри.

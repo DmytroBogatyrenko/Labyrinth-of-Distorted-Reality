@@ -73,6 +73,7 @@ LabyrinthGame::LabyrinthGame()
 
     // 5. Інші ресурси та таймери
     loadEnemySpriteAssets();
+    loadItemTextures();
     loadSounds();
     initEndButtons();
     resetScreamerTimer(); // Обнуляємо таймер (30 сек)
@@ -111,8 +112,8 @@ void LabyrinthGame::initEndButtons() {
     menuButton.box.setOutlineThickness(3.F);
     menuButton.box.setOutlineColor(sf::Color(135, 150, 195, 255));
 
-    centerEndButtonLabel(restartButton, "POCHATY ZNOVU", sw / 2.F, sh / 2.F + 120.F, 27);
-    centerEndButtonLabel(menuButton, "POVERNUTYS DO MENU", sw / 2.F, sh / 2.F + 200.F, 24);
+    centerEndButtonLabel(restartButton, "ПОЧАТИ ЗНОВУ", sw / 2.F, sh / 2.F + 120.F, 27);
+    centerEndButtonLabel(menuButton, "ПОВЕРНУТИСЬ ДО МЕНЮ", sw / 2.F, sh / 2.F + 200.F, 24);
 
 }
 
@@ -211,6 +212,31 @@ void LabyrinthGame::loadSounds() {
         pickupSound->setVolume(80.f);
     } else {
         std::cerr << "[Звук] Не знайдено assets/sounds/pickup.wav\n";
+    }
+        if (attackSoundBuffer.loadFromFile("assets/sounds/attack.wav")) {
+        attackSound.emplace(attackSoundBuffer);
+        attackSound->setVolume(85.f);
+    }
+    if (enemyDeathSoundBuffer.loadFromFile("assets/sounds/enemy_death.wav")) {
+        enemyDeathSound.emplace(enemyDeathSoundBuffer);
+        enemyDeathSound->setVolume(90.f);
+    }
+    constexpr std::array<const char*, 4> gameMusicCandidates = {
+        "assets/sounds/game_music.ogg",
+        "assets/sounds/game_music.mp3",
+        "assets/music/game_music.ogg",
+        "assets/music/game_music.mp3"
+    };
+    for (const char* path : gameMusicCandidates) {
+        if (!std::filesystem::exists(path)) continue;
+        gameMusic.emplace();
+        if (gameMusic->openFromFile(path)) {
+            gameMusic->setLooping(true);
+            gameMusic->setVolume(32.f);
+            gameMusic->play();
+            break;
+        }
+        gameMusic.reset();
     }
 }
 void LabyrinthGame::loadItemTextures() {
@@ -695,14 +721,14 @@ void LabyrinthGame::update(float dt) {
     bool  isSprinting = false, isFlightJump = false;
     float moveSpeed   = baseMoveSpeed;
 
-    if (shiftPressed && stamina > 1.0F && isWalking) {
+    if (shiftPressed && stamina > 0.05F && isWalking) {
         isSprinting = true; moveSpeed *= sprintMultiplier;
         stamina -= sprintDrain * dt;
         sprintVisualTimer = std::min(1.0F, sprintVisualTimer + dt * 2.8F);
     } else {
         sprintVisualTimer = std::max(0.0F, sprintVisualTimer - dt * 2.2F);
     }
-    if (shiftPressed && spacePressed && stamina > 1.0F) {
+    if (shiftPressed && spacePressed && stamina > 0.05F) {
         isFlightJump = true; moveSpeed *= flightMultiplier;
         stamina -= flightDrain * dt;
         flightVisualTimer = std::min(0.35F, flightVisualTimer + dt * 2.2F);
@@ -860,7 +886,7 @@ void LabyrinthGame::refreshHandsTexture() {
     } else if (hasFlashlight) {
         loaded = tryLoadHandsTexture({"assets/hands_flashlight.png", "assets/hands.png"});
     } else if (hasKnife) {
-        loaded = tryLoadHandsTexture({"assets/hands_knife.png"});
+        loaded = tryLoadHandsTexture({"assets/hands_knife.png", "assets/hands.png", "assets/hands_clean.png"});
     } else {
         loaded = tryLoadHandsTexture({"assets/hands_clean.png"});
     }
@@ -905,7 +931,12 @@ void LabyrinthGame::handleCombat() {
     if (!attackPressed) return;
     attackPressed = false;
     if (!(hasFlashlight && hasKnife)) return;
+        if (attackSound.has_value()) {
+        attackSound->stop();
+        attackSound->play();
+    }
 
+    bool enemyKilled = false;
     for (auto& enemy : enemies) {
         const sf::Vector2f toEnemy = enemy.position - player;
         const float dist = std::sqrt(toEnemy.x * toEnemy.x + toEnemy.y * toEnemy.y);
@@ -917,12 +948,18 @@ void LabyrinthGame::handleCombat() {
         if (std::abs(angleDiff) > 0.65F) continue;
         if (!hasLineOfSight(player, enemy.position, 0.08F)) continue;
 
+        const float prevHp = enemy.hp;
         enemy.hp = std::max(0.0F, enemy.hp - 20.0F);
+        if (prevHp > 0.0F && enemy.hp <= 0.0F) enemyKilled = true;
     }
 
     enemies.erase(std::remove_if(enemies.begin(), enemies.end(),
         [](const EnemyInfo& enemy) { return enemy.hp <= 0.0F; }),
         enemies.end());
+    if (enemyKilled && enemyDeathSound.has_value()) {
+    enemyDeathSound->stop();
+    enemyDeathSound->play();
+    }
 }
 
 
@@ -1661,10 +1698,10 @@ void LabyrinthGame::drawPortalScreen() {
         window.draw(ring);
     }
     if (!fontLoaded) return;
-    sf::Text title(font, "SYSTEM BROKEN. YOU ARE FREE", 42);
+    sf::Text title(font, "СИСТЕМУ ЗЛАМАНО. ТИ ВІЛЬНИЙ", 42);
     title.setStyle(sf::Text::Bold); title.setFillColor(sf::Color::White);
     title.setPosition({120.F, (float)screenHeight-170.F}); window.draw(title);
-    sf::Text tip(font, "Press ESC to close game", 26);
+    sf::Text tip(font, "НАТИСНИ ESC, ЩОБ ЗАКРИТИ ГРУ", 26);
     tip.setFillColor(sf::Color(220,220,230));
     tip.setPosition({300.F, (float)screenHeight-115.F}); window.draw(tip);
 }
