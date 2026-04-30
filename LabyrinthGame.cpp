@@ -7,6 +7,7 @@
 #include <iostream>
 #include <optional>
 #include <random>
+#include <cstring>
 
 namespace {
 enum EnemyState : int {
@@ -16,6 +17,9 @@ enum EnemyState : int {
     EnemySearch = 3,
     EnemyAttack = 4
 };
+sf::String utf8(const std::string& text) {
+    return sf::String::fromUtf8(text.begin(), text.end());
+}
 }
 
 // =====================================================================
@@ -35,19 +39,24 @@ LabyrinthGame::LabyrinthGame()
     spawnEnemiesRandomly();
 
     // 2. Шрифт (із fallback як у меню)
-    constexpr std::array<const char*, 6> fontCandidates = {
+    constexpr std::array<const char*, 12> fontCandidates = {
+        "assets/fonts/NotoSans-Regular.ttf",
+        "assets/fonts/DejaVuSans.ttf",
         "arial.ttf",
         "assets/arial.ttf",
         "assets/fonts/arial.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSansDisplay-Regular.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+        "C:/Windows/Fonts/segoeui.ttf",
         "C:/Windows/Fonts/arial.ttf"
     };
     for (const char* path : fontCandidates) {
         if (!std::filesystem::exists(path)) continue;
         if (font.openFromFile(path)) {
             fontLoaded = true;
-            break;
         }
     }
     if (!fontLoaded) std::cerr << "[Попередження] Не знайдено шрифт для кнопок/тексту.\n";
@@ -86,7 +95,7 @@ LabyrinthGame::LabyrinthGame()
 void LabyrinthGame::centerEndButtonLabel(EndButton& button, const std::string& text,
                                          float centerX, float centerY, unsigned int size) {
     if (!fontLoaded) return;
-    button.label.emplace(font, sf::String(text), size);
+    button.label.emplace(font, utf8(text), size);
     button.label->setStyle(sf::Text::Bold);
     button.label->setFillColor(sf::Color(245, 245, 250));
     const auto bounds = button.label->getLocalBounds();
@@ -1249,16 +1258,6 @@ void LabyrinthGame::drawFirstPersonWorld() {
             const float screenY = horizonY + spriteHeight * 0.82F;
             const sf::Color tint = sf::Color(255, 255, 255, 245);
 
-            // Базова коробочка під предмет (щоб PNG накладався зверху по запиту)
-            const float boxSize = std::max(6.0F, (static_cast<float>(screenHeight) / dist) * 0.18F);
-            sf::RectangleShape itemRect(sf::Vector2f(boxSize, boxSize * (tile == 'F' ? 1.8F : 0.5F)));
-            itemRect.setOrigin(itemRect.getGeometricCenter());
-            itemRect.setPosition(sf::Vector2f(screenX + screenShakeX, horizonY + boxSize * 0.95F));
-            itemRect.setFillColor(tile == 'F'
-                ? sf::Color(245, 240, 170, 190)
-                : sf::Color(210, 210, 220, 190));
-            window.draw(itemRect);
-
             if (tile == 'F' && flashlightItemLoaded) {
                 sf::Sprite item(flashlightItemTexture);
                 const sf::Vector2u ts = flashlightItemTexture.getSize();
@@ -1616,13 +1615,13 @@ void LabyrinthGame::drawGameOver() {
     window.draw(glow);
 
     if (fontLoaded) {
-        sf::Text title(font, "VY PROHRALY", 90);
+        sf::Text title(font, "ВИ ПРОГРАЛИ", 90);
         title.setStyle(sf::Text::Bold); title.setFillColor(sf::Color(200,20,20));
         const auto tb = title.getLocalBounds();
         title.setOrigin({tb.size.x/2.F, tb.size.y/2.F});
         title.setPosition({sw/2.F, sh/2.F-60.F}); window.draw(title);
 
-        sf::Text sub(font, "Sprobuyte she raz.", 30);
+        sf::Text sub(font, "СПРОБУЙТЕ ЩЕ РАЗ", 30);
         sub.setFillColor(sf::Color(160,160,160));
         const auto sb = sub.getLocalBounds();
         sub.setOrigin({sb.size.x/2.F, sb.size.y/2.F});
@@ -1657,7 +1656,7 @@ void LabyrinthGame::drawVictoryScreen() {
     }
 
     if (fontLoaded) {
-        sf::Text title(font, "TY PEREMIH", 78);
+        sf::Text title(font, "ТИ ПЕРЕМІГ", 78);
         title.setStyle(sf::Text::Bold);
         title.setFillColor(sf::Color::White);
         const auto tb = title.getLocalBounds();

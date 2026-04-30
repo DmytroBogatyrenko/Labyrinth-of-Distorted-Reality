@@ -2,8 +2,15 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstring>
 #include <iostream>
 #include <random>
+
+namespace {
+sf::String utf8(const char* text) {
+    return sf::String::fromUtf8(text, text + std::strlen(text));
+}
+}
 
 // =====================================================================
 //  КОНСТРУКТОР
@@ -42,12 +49,18 @@ MenuResult MenuScene::run() {
 //  ЗАВАНТАЖЕННЯ РЕСУРСІВ
 // =====================================================================
 void MenuScene::loadAssets() {
-    constexpr std::array<const char*, 6> fontCandidates = {
+    constexpr std::array<const char*, 12> fontCandidates = {
+        "assets/fonts/NotoSans-Regular.ttf",
+        "assets/fonts/DejaVuSans.ttf",
         "arial.ttf",
         "assets/arial.ttf",
         "assets/fonts/arial.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSansDisplay-Regular.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+        "C:/Windows/Fonts/segoeui.ttf",
         "C:/Windows/Fonts/arial.ttf"
     };
 
@@ -107,14 +120,14 @@ void MenuScene::initButtons() {
         btn.box.setOutlineThickness(1.5F);
         btn.box.setOutlineColor(sf::Color(70, 70, 80, 175));
 
-        btn.label.emplace(font, sf::String(txt), sz);
+        btn.label.emplace(font, utf8(txt), sz);
         btn.label->setLetterSpacing(2.2F);
         centerText(*btn.label, cx, y);
     };
 
-    setup(btnPlay,  "UVIYTY U TEMRYAVU",  390.F, 23);
-    setup(btnRules, "PRAVYLA / SYUZHET",  470.F, 23);
-    setup(btnBack,  "<- POVERNUTYS",      625.F, 21);
+    setup(btnPlay,  "УВІЙТИ У ТЕМРЯВУ",  390.F, 23);
+    setup(btnRules, "ПРАВИЛА / СЮЖЕТ",   470.F, 23);
+    setup(btnBack,  "← ПОВЕРНУТИСЬ",     625.F, 21);
 }
 
 void MenuScene::initParticles() {
@@ -304,14 +317,14 @@ void MenuScene::drawMainPage() {
     float f = 0.9F + sin(flickerTime * 2.f) * 0.05f;
     uint8_t ta = static_cast<uint8_t>(std::clamp(f * 255.f, 0.f, 255.f));
 
-    sf::Text title(font, "LABIRYNT", 84);
+    sf::Text title(font, utf8("ЛАБІРИНТ"), 84); 
     title.setStyle(sf::Text::Bold);
     title.setLetterSpacing(7.f);
     title.setFillColor(sf::Color(215, 215, 220, ta));
     centerText(title, cx, 150.f);
     window.draw(title);
 
-    sf::Text sub(font, "SPOTVORENOI REALNOSTI", 24);
+    sf::Text sub(font, utf8("СПОТВОРЕНОЇ РЕАЛЬНОСТІ"), 24);
     sub.setFillColor(sf::Color(120, 20, 20, ta));
     centerText(sub, cx, 245.f);
     window.draw(sub);
@@ -324,29 +337,33 @@ void MenuScene::drawRulesPage() {
     if (!fontLoaded) return;
     const float cx = static_cast<float>(SW) / 2.0F;
 
-   sf::Text rules(font,
-        "META GRY:\n"
-        " - Zbery 3 klyuchi, vidkryy dveri ta diydy do vykhodu.\n"
-        " - NPC mayut 100 HP (prykhovano), mozhna byt yikh lyshe z nozem.\n\n"
-        "PREDMETY:\n"
-        " - Na pochatku poruch lezhyt likhtaryk. Natysny E, shchob pidibraty.\n"
-        " - Dalishi na mapi ye nizh. Pislya pidboru obokh predmetiv aktyvna ataka.\n"
-        " - Likhtaryk inodi migotyt: tse chastyna atmosfery.\n\n"
-        "KERUVANNYA:\n"
-        " - W/S abo Up/Down: ruh vpered / nazad\n"
-        " - A/D abo Left/Right: povorot\n"
-        " - Shift: bih\n"
-        " - Shift + Space: strybok/polit (vysokyy burst ruhu)\n"
-        " - E: vzaemodiya z predmetamy\n"
-        " - LKM: ataka (pratsyuye lyshe z likhtarykom + nozem)\n"
-        " - M: povna mapa\n"
-        " - ESC: vyhid / nazad iz pravil",
-        18);
+    // Огортаємо весь текст у функцію utf8()
+    sf::Text rules(font, utf8(
+        "МЕТА ГРИ:\n"
+        " - Збери 3 ключі, відкрий двері та дійди до виходу.\n"
+        " - НПС мають 100 HP (приховано), бити їх можна лише з ножем.\n\n"
+        "ПРЕДМЕТИ:\n"
+        " - На початку поруч лежить ліхтарик. Натисни E, щоб підібрати.\n"
+        " - Далі на мапі є ніж. Після підбору обох предметів активна атака.\n"
+        " - Ліхтарик іноді миготить: це частина атмосфери.\n\n"
+        "КЕРУВАННЯ:\n"
+        " - W/S або Up/Down: рух вперед / назад\n"
+        " - A/D або Left/Right: поворот\n"
+        " - Shift: біг\n"
+        " - Shift + Space: стрибок/політ (високий ривок руху)\n"
+        " - E: взаємодія з предметами\n"
+        " - ЛКМ: атака (працює лише з ліхтариком + ножем)\n"
+        " - M: повна мапа\n"
+        " - ESC: вихід / назад із правил"
+    ), 18);
+
     rules.setFillColor(sf::Color(178, 178, 186));
-    sf::FloatRect bounds = rules.getLocalBounds();
-    rules.setOrigin({bounds.size.x / 2.0f, 0.f}); // Центруємо точку прив'язки по горизонталі
-    rules.setPosition({cx, 120.F});
     
+    // В SFML 3 getLocalBounds повертає Rect, де розміри в полі .size
+    sf::FloatRect bounds = rules.getLocalBounds();
+    rules.setOrigin({bounds.size.x / 2.0f, 0.f}); 
+    rules.setPosition({cx, 120.F});
+
     window.draw(rules);
     drawButton(btnBack);
 }
