@@ -530,7 +530,7 @@ void LabyrinthGame::drawFullMapOverlay() {
     }
 
     if (fontLoaded) {
-        sf::Text title(font, "ПОВНА КАРТА (M - закрити)", 24);
+        sf::Text title(font, utf8("Повна карта (M - закрити)"), 24);
         title.setFillColor(sf::Color::White);
         title.setPosition(sf::Vector2f(sx, sy-34.F));
         window.draw(title);
@@ -596,13 +596,13 @@ void LabyrinthGame::drawGameOver() {
     window.draw(glow);
 
     if (fontLoaded) {
-        sf::Text title(font, "ВИ ПРОГРАЛИ", 90);
+        sf::Text title(font, utf8("Ви програли"), 90);
         title.setStyle(sf::Text::Bold); title.setFillColor(sf::Color(200,20,20));
         const auto tb = title.getLocalBounds();
         title.setOrigin({tb.size.x/2.F, tb.size.y/2.F});
         title.setPosition({sw/2.F, sh/2.F-60.F}); window.draw(title);
 
-        sf::Text sub(font, "СПРОБУЙТЕ ЩЕ РАЗ", 30);
+        sf::Text sub(font, utf8("Спробуйте ще раз"), 30);
         sub.setFillColor(sf::Color(160,160,160));
         const auto sb = sub.getLocalBounds();
         sub.setOrigin({sb.size.x/2.F, sb.size.y/2.F});
@@ -638,19 +638,17 @@ void LabyrinthGame::drawVictoryScreen() {
     }
 
     if (fontLoaded) {
-        sf::Text title(font, "ТИ ПЕРЕМІГ", 78);
+        sf::Text title(font, utf8("Ти переміг"), 78);
         title.setStyle(sf::Text::Bold);
-        title.setFillColor(sf::Color::White);
+        const float progress = std::clamp(victoryScreenTimer / 2.4F, 0.0F, 1.0F);
+        const uint8_t titleAlpha = static_cast<uint8_t>(255.0F * progress);
+        title.setFillColor(sf::Color(255, 255, 255, titleAlpha));
         const auto tb = title.getLocalBounds();
         title.setOrigin({tb.size.x / 2.F, tb.size.y / 2.F});
         title.setPosition({screenWidth / 2.F, screenHeight / 2.F + 30.F});
         window.draw(title);
     }
 
-    window.draw(restartButton.box);
-    window.draw(menuButton.box);
-    if (restartButton.label) window.draw(*restartButton.label);
-    if (menuButton.label) window.draw(*menuButton.label);
 }
 
 void LabyrinthGame::drawTransitionOverlay() {
@@ -680,12 +678,12 @@ void LabyrinthGame::drawPortalScreen() {
         window.draw(ring);
     }
     if (!fontLoaded) return;
-    sf::Text title(font, "СИСТЕМУ ЗЛАМАНО. ТИ ВІЛЬНИЙ", 42);
-    title.setStyle(sf::Text::Bold); title.setFillColor(sf::Color::White);
-    title.setPosition({120.F, (float)screenHeight-170.F}); window.draw(title);
-    sf::Text tip(font, "НАТИСНИ ESC, ЩОБ ЗАКРИТИ ГРУ", 26);
-    tip.setFillColor(sf::Color(220,220,230));
-    tip.setPosition({300.F, (float)screenHeight-115.F}); window.draw(tip);
+        sf::Text title(font, utf8("Систему зламано. Ти вільний"), 42);
+        title.setStyle(sf::Text::Bold); title.setFillColor(sf::Color::White);
+        title.setPosition({120.F, (float)screenHeight-170.F}); window.draw(title);
+        sf::Text tip(font, utf8("Натисни Esc, щоб закрити гру"), 26);
+        tip.setFillColor(sf::Color(220,220,230));
+        tip.setPosition({300.F, (float)screenHeight-115.F}); window.draw(tip);
 }
 
 // =====================================================================

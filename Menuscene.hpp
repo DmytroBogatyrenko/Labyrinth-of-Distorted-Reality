@@ -59,23 +59,38 @@ private:
     };
     std::vector<Particle> particles;
 
+    // Завантажує шрифти та інші візуальні ресурси меню
     void loadAssets();
+    // Завантажує звуки кнопок і фонову музику
     void loadSounds();
+    // Створює та налаштовує кнопки меню
     void initButtons();
+    // Ініціалізує декоративні частинки фону
     void initParticles();
 
+    // Обробляє події (клавіатура/миша/закриття)
     void processEvents(MenuResult& result);
+    // Оновлює стани анімацій, hover та fade
     void update(float dt, MenuResult& result);
+    // Відмальовує кадр меню
     void render();
 
+    // Малює анімований фон
     void drawBackground();
+    // Малює частинки
     void drawParticles();
+    // Малює головну сторінку меню
     void drawMainPage();
+    // Малює сторінку правил/сюжету
     void drawRulesPage();
+    // Малює fade-оверлей при переходах
     void drawFadeOverlay();
 
+    // Оновлює стан однієї кнопки (hover/glow)
     void updateButton(MenuButton& btn, const sf::Vector2f& mouse, float dt);
+    // Малює одну кнопку
     void drawButton(MenuButton& btn);
+    // Центрує текст відносно точки
     void centerText(sf::Text& text, float cx, float cy);
 
     static constexpr unsigned int SW = 1100;

@@ -1,4 +1,4 @@
-#include "MenuScene.hpp"
+#include "Menuscene.hpp"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -125,9 +125,9 @@ void MenuScene::initButtons() {
         centerText(*btn.label, cx, y);
     };
 
-    setup(btnPlay,  "УВІЙТИ У ТЕМРЯВУ",  390.F, 23);
-    setup(btnRules, "ПРАВИЛА / СЮЖЕТ",   470.F, 23);
-    setup(btnBack,  "← ПОВЕРНУТИСЬ",     625.F, 21);
+    setup(btnPlay,  "Увійти у темряву",  390.F, 23);
+    setup(btnRules, "Правила / сюжет",   470.F, 23);
+    setup(btnBack,  "← Повернутись",     625.F, 21);
 }
 
 void MenuScene::initParticles() {

@@ -13,4 +13,19 @@
       ]
     }
   ]
+    // "version": 4,
+    // "configurations": [
+    //     {
+    //         "name": "Win64-SFML-D",
+    //         "includePath": [
+    //             "${workspaceFolder}/**",
+    //             "D:/SFML-3.0.2/include"
+    //         ],
+    //         "defines": [],
+    //         "compilerPath": "D:/mingw64/bin/g++.exe",
+    //         "cStandard": "c17",
+    //         "cppStandard": "c++20",
+    //         "intelliSenseMode": "windows-gcc-x64"
+    //     }
+    // ]
 }

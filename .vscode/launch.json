@@ -1,4 +1,27 @@
 {
+    // "version": "0.2.0",
+    // "configurations": [
+    //     {
+    //         "name": "Run SFML App",
+    //         "type": "cppdbg",
+    //         "request": "launch",
+    //         "program": "${workspaceFolder}/build/main.exe",
+    //         "args": [],
+    //         "stopAtEntry": false,
+    //         "cwd": "${workspaceFolder}",
+    //         "environment": [
+    //             {
+    //                 "name": "PATH",
+    //                 "value": "D:/SFML-3.0.2/bin;D:/mingw64/bin;${env:PATH}"
+    //             }
+    //         ],
+    //         "externalConsole": true,
+    //         "MIMode": "gdb",
+    //         "miDebuggerPath": "D:/mingw64/bin/gdb.exe",
+    //         "preLaunchTask": "Build SFML Project"
+    //     }
+
+    // ]
     "configurations": [
         {
             "name": "C/C++: g++.exe build and debug active file",

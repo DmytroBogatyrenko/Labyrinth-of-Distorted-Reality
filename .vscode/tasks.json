@@ -21,13 +21,39 @@
         "-lsfml-window",
         "-lsfml-system"
       ],
-      "group": {
-        "kind": "build",
-        "isDefault": true
-      },
-      "problemMatcher": [
-        "$gcc"
-      ]
     }
   ]
+    //         "label": "Build SFML Project",
+    //         "type": "shell",
+    //         "command": "D:/mingw64/bin/g++.exe",
+    //         "args": [
+    //             "-std=c++20",
+    //             "-O2",
+    //             "-Wall",
+    //             "-Wextra",
+    //             "-pedantic",
+    //             "-ID:/SFML-3.0.2/include",
+    //             "${workspaceFolder}/main.cpp",
+    //             "${workspaceFolder}/Menuscene.cpp",
+    //             "${workspaceFolder}/LabyrinthGame.cpp",
+    //             "${workspaceFolder}/LabyrinthGameRender.cpp",
+    //             "${workspaceFolder}/LabyrinthGameWorld.cpp",
+    //             "-LD:/SFML-3.0.2/lib",
+    //             "-lsfml-graphics",
+    //             "-lsfml-window",
+    //             "-lsfml-system",
+    //             "-lsfml-audio",
+    //             "-o",
+    //             "${workspaceFolder}/build/main.exe"
+    //         ],
+    //         "group": {
+    //             "kind": "build",
+    //             "isDefault": true
+    //         },
+    //         "problemMatcher": ["$gcc"],
+    //         "options": {
+    //             "cwd": "${workspaceFolder}"
+    //         }
+    //     }
+    // ]
 }

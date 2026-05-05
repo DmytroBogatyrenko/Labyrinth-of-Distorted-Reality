@@ -21,10 +21,7 @@ LabyrinthGame::LabyrinthGame()
     window.setFramerateLimit(60);
 
     // 1. Будуємо світ
-    buildLargeMap();
-    placeStartingItems();
-    placeKeysRandomly();
-    spawnEnemiesRandomly();
+    startFreshRun();
 
     // 2. Шрифт (із fallback як у меню)
     constexpr std::array<const char*, 12> fontCandidates = {
@@ -76,6 +73,15 @@ LabyrinthGame::LabyrinthGame()
     resetScreamerTimer(); // Обнуляємо таймер (30 сек)
     transitionState = TransitionState::FadeIn;
     transitionAlpha = 255.0F;
+    victoryScreenTimer = 0.0F;
+
+    // if (debugStartWithVictoryScreen) {
+    //     activeEndScreen = EndScreen::Victory;
+    //     pendingEndScreen = EndScreen::None;
+    //     gameWon = true;
+    //     gameover = false;
+    //     victoryScreenTimer = 0.0F;
+    // }
 }
 
 
@@ -109,16 +115,24 @@ void LabyrinthGame::initEndButtons() {
     menuButton.box.setOutlineThickness(3.F);
     menuButton.box.setOutlineColor(sf::Color(135, 150, 195, 255));
 
-    centerEndButtonLabel(restartButton, "ПОЧАТИ ЗНОВУ", sw / 2.F, sh / 2.F + 120.F, 27);
-    centerEndButtonLabel(menuButton, "ПОВЕРНУТИСЬ ДО МЕНЮ", sw / 2.F, sh / 2.F + 200.F, 24);
+    centerEndButtonLabel(restartButton, "Почати знову", sw / 2.F, sh / 2.F + 120.F, 27);
+    centerEndButtonLabel(menuButton, "Повернутись до меню", sw / 2.F, sh / 2.F + 200.F, 24);
 
 }
 
-void LabyrinthGame::resetGameState() {
+void LabyrinthGame::startFreshRun() {
+    hasFlashlight = false;
+    hasKnife = false;
     buildLargeMap();
     placeStartingItems();
     placeKeysRandomly();
     spawnEnemiesRandomly();
+
+}
+
+
+void LabyrinthGame::resetGameState() {
+    startFreshRun();
 
     player = sf::Vector2f(1.5F, 1.5F);
     playerAngle = 0.0F;
@@ -144,6 +158,7 @@ void LabyrinthGame::resetGameState() {
     pendingEndScreen = EndScreen::None;
     transitionState = TransitionState::FadeIn;
     transitionAlpha = 255.0F;
+    victoryScreenTimer = 0.0F;
 
     darknessFlicker = 0.0F;
     flickerPhase = 0.0F;
@@ -177,6 +192,7 @@ void LabyrinthGame::updateTransition(float dt) {
             if (activeEndScreen != EndScreen::None) {
                 gameover = (activeEndScreen == EndScreen::GameOver);
                 gameWon = (activeEndScreen == EndScreen::Victory);
+                    if (activeEndScreen == EndScreen::Victory) victoryScreenTimer = 0.0F;
             }
         }
     } else if (transitionState == TransitionState::FadeIn) {
@@ -354,6 +370,14 @@ void LabyrinthGame::processEvents() {
 // =====================================================================
 void LabyrinthGame::update(float dt) {
     updateTransition(dt);
+
+    if (activeEndScreen == EndScreen::Victory && transitionState == TransitionState::Idle) {
+        victoryScreenTimer += dt;
+        if (victoryScreenTimer >= victoryScreenDuration) {
+            window.close();
+        }
+        return;
+    }
 
     if (activeEndScreen != EndScreen::None ||
         transitionState == TransitionState::FadeOut) return;
